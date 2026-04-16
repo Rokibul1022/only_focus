@@ -5,11 +5,11 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/theme_provider.dart';
 import '../../data/models/article.dart';
 import '../shared/article_card.dart';
 import '../reader/reader_screen.dart';
 import '../shared/app_drawer.dart';
+import '../shared/chatbot_widget.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -106,6 +106,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       key: _scaffoldKey,
       drawer: const AppDrawer(),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         leading: GestureDetector(
           onTap: () {
@@ -154,24 +155,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      body: feedState.when(
-        data: (articles) => _buildFeedList(articles),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: AppColors.warning),
-              const SizedBox(height: 16),
-              Text('Failed to load articles', style: AppTextStyles.uiBody),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: _refreshFeed,
-                child: const Text('Retry'),
+      body: Stack(
+        children: [
+          feedState.when(
+            data: (articles) => _buildFeedList(articles),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stack) => Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: AppColors.warning),
+                  const SizedBox(height: 16),
+                  Text('Failed to load articles', style: AppTextStyles.uiBody),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: _refreshFeed,
+                    child: const Text('Retry'),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ChatbotWidget(),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -202,11 +213,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               });
               break;
             case 3:
-              Navigator.pushNamed(context, '/focus').then((_) {
-                setState(() => _currentIndex = 0);
-              });
-              break;
-            case 4:
               Navigator.pushNamed(context, '/profile').then((_) {
                 setState(() => _currentIndex = 0);
               });
@@ -228,11 +234,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icon(Icons.bookmark_outline),
             activeIcon: Icon(Icons.bookmark),
             label: 'Bookmarks',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.timer_outlined),
-            activeIcon: Icon(Icons.timer),
-            label: 'Focus',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
@@ -267,7 +268,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onRefresh: _refreshFeed,
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
         itemCount: articles.length + 1,
         physics: const AlwaysScrollableScrollPhysics(),
         addAutomaticKeepAlives: true,

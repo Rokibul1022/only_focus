@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_text_styles.dart';
@@ -10,7 +9,6 @@ import 'ui/auth/login_screen.dart';
 import 'ui/auth/signup_screen.dart';
 import 'ui/home/home_screen.dart';
 import 'ui/discover/discover_screen.dart';
-import 'ui/reader/reader_screen.dart';
 import 'ui/bookmarks/bookmarks_screen.dart';
 import 'ui/focus/focus_screen.dart';
 import 'ui/profile/profile_screen.dart';

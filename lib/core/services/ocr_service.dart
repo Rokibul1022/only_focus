@@ -1,28 +1,52 @@
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'dart:io';
+import 'package:dio/dio.dart';
 
 class OcrService {
-  final TextRecognizer _textRecognizer = TextRecognizer();
-  
+  final Dio _dio = Dio();
+  static const String _apiKey = 'K84291758988957';
+  static const String _apiUrl = 'https://api.ocr.space/parse/image';
+
   Future<String> extractTextFromImage(String imagePath) async {
     try {
-      final inputImage = InputImage.fromFilePath(imagePath);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+      final file = File(imagePath);
       
-      final StringBuffer extractedText = StringBuffer();
-      
-      for (TextBlock block in recognizedText.blocks) {
-        for (TextLine line in block.lines) {
-          extractedText.writeln(line.text);
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          imagePath,
+          filename: file.path.split('/').last,
+        ),
+        'apikey': _apiKey,
+        'language': 'eng',
+        'isOverlayRequired': false,
+      });
+
+      final response = await _dio.post(
+        _apiUrl,
+        data: formData,
+        options: Options(
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['ParsedResults'] != null && data['ParsedResults'].isNotEmpty) {
+          final text = data['ParsedResults'][0]['ParsedText'] as String;
+          return text.trim();
+        } else {
+          throw Exception('No text found in image');
         }
+      } else {
+        throw Exception('OCR API error: ${response.statusCode}');
       }
-      
-      return extractedText.toString().trim();
     } catch (e) {
       throw Exception('Failed to extract text: $e');
     }
   }
-  
+
   void dispose() {
-    _textRecognizer.close();
+    // No cleanup needed
   }
 }

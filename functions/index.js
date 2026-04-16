@@ -327,7 +327,7 @@ exports.generateAISummary = functions.https.onCall(async (data, context) => {
       },
       {
         headers: {
-          'Authorization': `Bearer YOUR_GROQ_API_KEY_HERE`,
+          'Authorization': `Bearer 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`,
           'Content-Type': 'application/json',
         },
       }

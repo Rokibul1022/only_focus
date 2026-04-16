@@ -81,6 +81,16 @@ class AppDrawer extends ConsumerWidget {
             },
           ),
           
+          // Focus Timer
+          ListTile(
+            leading: const Icon(Icons.timer),
+            title: const Text('Focus Timer'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/focus');
+            },
+          ),
+          
           // Notes
           ListTile(
             leading: const Icon(Icons.note),

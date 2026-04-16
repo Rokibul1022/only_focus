@@ -179,7 +179,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
           SnackBar(
             content: Text('Search failed: ${e.toString()}'),
             backgroundColor: AppColors.warning,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -343,7 +343,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: AppColors.primary, width: 2),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
                     ),
                     filled: true,
                     fillColor: Theme.of(context).cardColor,

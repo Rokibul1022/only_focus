@@ -15,7 +15,7 @@ dependencies:
   firebase_auth: ^5.1.4
   cloud_firestore: ^5.2.1
   cloud_functions: ^5.0.4
-  firebase_messaging: ^15.0.4
+  # firebase_messaging: ^15.0.4  # Temporarily disabled - causing iOS build issues
   firebase_analytics: ^11.2.1
   
   # State management & navigation
@@ -57,7 +57,7 @@ dependencies:
   share_plus: ^9.0.0
   google_sign_in: ^6.2.1
   image_picker: ^1.0.7
-  google_mlkit_text_recognition: ^0.13.0
+  # google_mlkit_text_recognition: ^0.14.0  # Disabled - using OCR.space API instead
 
 dev_dependencies:
   flutter_test:

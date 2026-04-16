@@ -37,7 +37,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final TtsService _ttsService = TtsService();
   Article? _article;
   bool _isLoading = true;
-  bool _isLoadingContent = false;
+  final bool _isLoadingContent = false;
   double _readingProgress = 0.0;
   DateTime? _startTime;
   late WebViewController _webViewController;
@@ -181,24 +181,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         '''
       );
       
-      if (result != null) {
-        String extractedText = result.toString();
-        // Clean up the text
-        extractedText = extractedText
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .replaceAll(RegExp(r'[\n\r]+'), ' ')
-            .trim();
-        
-        if (extractedText.isNotEmpty && extractedText.length > 100) {
-          setState(() {
-            _articleContent = extractedText;
-          });
-          print('Extracted ${extractedText.length} characters from page');
-        } else {
-          print('Extracted text too short: ${extractedText.length} characters');
-        }
+      String extractedText = result.toString();
+      // Clean up the text
+      extractedText = extractedText
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .replaceAll(RegExp(r'[\n\r]+'), ' ')
+          .trim();
+      
+      if (extractedText.isNotEmpty && extractedText.length > 100) {
+        setState(() {
+          _articleContent = extractedText;
+        });
+        print('Extracted ${extractedText.length} characters from page');
+      } else {
+        print('Extracted text too short: ${extractedText.length} characters');
       }
-    } catch (e) {
+        } catch (e) {
       print('Error extracting content from page: $e');
     }
   }
@@ -249,7 +247,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
     
     if (_article != null && !_hasUpdatedStats) {
-      final durationSec = 60; // Default 1 minute for opening
+      const durationSec = 60; // Default 1 minute for opening
       await _cache.markAsRead(_article!.id, progress: 0.5, durationSec: durationSec);
       await _updateUserStats(durationSec, stars: 5);
       _hasUpdatedStats = true;
@@ -332,16 +330,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         '''
       );
       
-      if (result != null) {
-        String text = result.toString();
-        text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-        
-        if (text.isNotEmpty && text.length > 50) {
-          print('Extracted ${text.length} characters from WebView');
-          return text;
-        }
+      String text = result.toString();
+      text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      
+      if (text.isNotEmpty && text.length > 50) {
+        print('Extracted ${text.length} characters from WebView');
+        return text;
       }
-    } catch (e) {
+        } catch (e) {
       print('WebView text extraction error: $e');
     }
     
