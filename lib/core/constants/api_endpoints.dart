@@ -21,7 +21,7 @@ class ApiEndpoints {
   
   // AI APIs
   static const String groqApiBase = 'https://api.groq.com/openai/v1';
-  static const String groqApiKey = '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';
+  static const String groqApiKey = 'YOUR_GROQ_API_KEY_HERE'; // Replace with your key
   static const String openRouterApiBase = 'https://openrouter.ai/api/v1';
   static const String openRouterApiKey = 'YOUR_OPENROUTER_API_KEY_HERE';
 }

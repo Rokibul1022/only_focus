@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 
 class OcrService {
   final Dio _dio = Dio();
-  static const String _apiKey = 'K84291758988957';
+  static const String _apiKey = 'YOUR_OCR_SPACE_API_KEY'; // Replace with your key
   static const String _apiUrl = 'https://api.ocr.space/parse/image';
 
   Future<String> extractTextFromImage(String imagePath) async {
