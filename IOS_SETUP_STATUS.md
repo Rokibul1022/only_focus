@@ -16,7 +16,7 @@
 ### 3. API Keys
 - ✅ **Groq API Key** updated in `lib/core/constants/api_endpoints.dart`
 - ✅ **Groq API Key** updated in `functions/index.js`
-- ✅ Key: `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`
+- ✅ Key: `YOUR_GROQ_API_KEY_HERE` (Replace with your actual key)
 
 ---
 

@@ -95,7 +95,7 @@ firebase deploy --only functions
 ## 🔑 API Keys Configured
 
 ### ✅ Groq API:
-- Key: `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`
+- Key: `YOUR_GROQ_API_KEY_HERE`
 - Location: `lib/core/constants/api_endpoints.dart`
 - Cloud Functions: `functions/index.js`
 
