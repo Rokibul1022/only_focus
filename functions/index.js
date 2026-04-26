@@ -308,6 +308,11 @@ exports.generateAISummary = functions.https.onCall(async (data, context) => {
   
   try {
     // Call Groq API
+    const groqApiKey = functions.config().groq?.api_key || process.env.GROQ_API_KEY;
+    if (!groqApiKey) {
+      throw new functions.https.HttpsError('failed-precondition', 'Groq API key not configured');
+    }
+    
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
@@ -327,7 +332,7 @@ exports.generateAISummary = functions.https.onCall(async (data, context) => {
       },
       {
         headers: {
-          'Authorization': `Bearer YOUR_GROQ_API_KEY_HERE`,
+          'Authorization': `Bearer ${groqApiKey}`,
           'Content-Type': 'application/json',
         },
       }
@@ -335,6 +340,11 @@ exports.generateAISummary = functions.https.onCall(async (data, context) => {
     
     const summaryText = response.data.choices[0].message.content;
     let summaryPoints;
+    
+    // Validate and sanitize before parsing
+    if (!summaryText || typeof summaryText !== 'string' || summaryText.length > 10000) {
+      throw new Error('Invalid summary response');
+    }
     
     try {
       summaryPoints = JSON.parse(summaryText);

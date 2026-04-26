@@ -30,6 +30,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -54,6 +55,12 @@ dependencies {
     // Firebase Authentication
     implementation("com.google.firebase:firebase-auth")
     
+    // Firebase Firestore
+    implementation("com.google.firebase:firebase-firestore")
+    
     // Google Play services for Google Sign-In
     implementation("com.google.android.gms:play-services-auth:21.5.1")
+    
+    // Multidex
+    implementation("androidx.multidex:multidex:2.0.1")
 }

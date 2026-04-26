@@ -58,31 +58,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _ttsService.initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadArticle();
-      _updateStatsOnOpen();
-      _prepareArticleContentForTts();
     });
-  }
-
-  Future<void> _prepareArticleContentForTts() async {
-    if (_article == null && widget.article != null) {
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-    
-    if (_article != null) {
-      // Prepare content immediately using available data
-      String content = _article!.title;
-      
-      if (_article!.summary != null && _article!.summary!.isNotEmpty) {
-        content += '. ${_article!.summary}';
-      }
-      
-      setState(() {
-        _articleContent = content;
-      });
-      
-      // Try to get more detailed content in background
-      _extractArticleContent();
-    }
   }
   
   @override
@@ -97,11 +73,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageFinished: (url) {
-            print('Page loaded: $url');
-            // Extract content after page loads
-            _extractContentFromLoadedPage();
-          },
+          onPageFinished: (url) {},
         ),
       );
     
@@ -257,15 +229,28 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Future<void> _extractArticleContent() async {
     if (_article == null) return;
     
-    // Only try to get enhanced content for Wikipedia
     if (_article!.sourceUrl.contains('wikipedia.org')) {
       try {
         final content = await _extractWikipediaContent(_article!.sourceUrl);
-        if (mounted && content.isNotEmpty && content.length > 100) {
+        if (mounted && content.isNotEmpty) {
           setState(() => _articleContent = content);
+          return;
         }
-      } catch (e) {
-        print('Wikipedia extraction failed: $e');
+      } catch (e) {}
+    }
+    
+    try {
+      final content = await _scraper.scrapeArticle(_article!.sourceUrl);
+      if (mounted) {
+        setState(() {
+          _articleContent = content.isNotEmpty ? content : '${_article!.title}. ${_article!.summary ?? ''}';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _articleContent = '${_article!.title}. ${_article!.summary ?? ''}';
+        });
       }
     }
   }
@@ -274,10 +259,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     try {
       final uri = Uri.parse(url);
       final title = uri.pathSegments.last;
-      final decodedTitle = Uri.decodeComponent(title);
-      final apiUrl = 'https://${uri.host}/w/api.php?action=query&format=json&prop=extracts&exintro=false&explaintext=true&titles=${Uri.encodeComponent(decodedTitle)}';
-      
-      print('Fetching Wikipedia content from: $apiUrl');
+      final apiUrl = 'https://${uri.host}/w/api.php?action=query&format=json&prop=extracts&exintro=false&explaintext=true&titles=$title';
       
       final response = await http.get(Uri.parse(apiUrl));
       if (response.statusCode == 200) {
@@ -287,13 +269,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         final extract = page['extract'] as String?;
         
         if (extract != null && extract.isNotEmpty) {
-          print('Wikipedia content extracted: ${extract.length} characters');
           return extract;
         }
       }
-    } catch (e) {
-      print('Wikipedia extraction error: $e');
-    }
+    } catch (e) {}
     
     return '';
   }
@@ -346,9 +325,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   
   void _updateReadingProgress(double progress) {
     setState(() => _readingProgress = progress);
+    
+    if (progress >= 0.6 && _article != null && !_article!.isRead) {
+      final durationSec = DateTime.now().difference(_startTime!).inSeconds;
+      _cache.markAsRead(_article!.id, progress: progress, durationSec: durationSec);
+      _updateUserStats(durationSec);
+    }
   }
   
-  Future<void> _updateUserStats(int durationSec, {required int stars}) async {
+  Future<void> _updateUserStats(int durationSec, {int stars = 1}) async {
     if (_article == null) return;
     
     try {
@@ -358,6 +343,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'totalArticlesRead': FieldValue.increment(1),
         'totalReadingMinutes': FieldValue.increment((durationSec / 60).ceil()),
+        'totalResearchPapersRead': _article!.contentType == 'research_paper' ? FieldValue.increment(1) : FieldValue.increment(0),
         'totalStars': FieldValue.increment(stars),
         'weeklyStars': FieldValue.increment(stars),
         'lastActiveAt': FieldValue.serverTimestamp(),
@@ -366,6 +352,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
   
   Future<void> _toggleTts() async {
+    if (_articleContent == null || _articleContent!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading article content...'), duration: Duration(seconds: 2)),
+      );
+      return;
+    }
+    
     if (_isTtsSummaryPlaying) {
       await _ttsService.stop();
       setState(() {
@@ -383,38 +376,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         setState(() => _isTtsPaused = true);
       }
     } else {
-      // Check if we have extracted content
-      if (_articleContent == null || _articleContent!.isEmpty || _articleContent!.length < 100) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Extracting article content, please wait...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        
-        // Try to extract again
-        await _extractContentFromLoadedPage();
-        
-        // Wait a bit for extraction
-        await Future.delayed(const Duration(seconds: 1));
-        
-        if (_articleContent == null || _articleContent!.isEmpty || _articleContent!.length < 100) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not extract article content. The page may not be fully loaded.'),
-              duration: Duration(seconds: 3),
-            ),
-          );
-          return;
-        }
-      }
-      
-      print('TTS: Reading ${_articleContent!.length} characters');
-      await _ttsService.speak(_articleContent!);
       setState(() {
         _isTtsPlaying = true;
         _isTtsPaused = false;
       });
+      _ttsService.speak(_articleContent!);
     }
   }
   
@@ -444,11 +410,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       }
       
       final summaryText = _summary!.asMap().entries.map((e) => '${e.key + 1}. ${e.value}').join('. ');
-      await _ttsService.speak(summaryText);
       setState(() {
         _isTtsSummaryPlaying = true;
         _isTtsSummaryPaused = false;
       });
+      _ttsService.speak(summaryText);
     }
   }
   
@@ -552,9 +518,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: const BoxDecoration(
+          color: AppColors.backgroundLight,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -642,9 +608,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           height: MediaQuery.of(context).size.height * 0.6,
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: const BoxDecoration(
+            color: AppColors.backgroundLight,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -739,13 +705,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              _summary![index],
-                              style: AppTextStyles.uiBody.copyWith(
-                                height: 1.5,
-                                color: Theme.of(context).textTheme.bodyLarge?.color,
-                              ),
-                            ),
+                            child: Text(_summary![index], style: AppTextStyles.uiBody.copyWith(height: 1.5)),
                           ),
                         ],
                       ),
@@ -756,8 +716,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  border: Border(top: BorderSide(color: Theme.of(context).dividerColor, width: 1)),
+                  color: AppColors.primary.withOpacity(0.1),
+                  border: Border(top: BorderSide(color: AppColors.primary.withOpacity(0.3), width: 1)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,

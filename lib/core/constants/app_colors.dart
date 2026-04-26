@@ -36,4 +36,7 @@ class AppColors {
   static const Color rankExpert = Color(0xFF534AB7); // Purple
   static const Color rankMaster = Color(0xFFBA7517); // Amber
   static const Color rankLegend = Color(0xFFD85A30); // Coral/Gold
+  
+  // Alias for background
+  static const Color background = backgroundLight;
 }

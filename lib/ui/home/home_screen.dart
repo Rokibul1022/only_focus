@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../data/models/article.dart';
+import '../../data/models/user_post.dart';
 import '../shared/article_card.dart';
 import '../reader/reader_screen.dart';
 import '../shared/app_drawer.dart';
 import '../shared/chatbot_widget.dart';
+import '../posts/post_upload_screen.dart';
+import '../friends/friends_screen.dart';
+import '../../providers/friends_provider.dart';
+import '../../providers/messages_provider.dart';
+import '../../providers/posts_provider.dart';
+import '../posts/post_detail_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -21,50 +30,17 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final ScrollController _scrollController = ScrollController();
-  bool _hasReloadedOnScroll = false;
   
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    // Load cached feed immediately, check refresh in background
+    // Check and refresh feed if needed
     Future.microtask(() async {
-      // Load cached feed first for instant display
-      await ref.read(feedProvider.notifier).loadCachedFeed();
-      
-      // Then check if refresh is needed in background
-      _checkAndRefreshFeedInBackground();
+      await _checkAndRefreshFeed();
     });
   }
   
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-  
-  void _onScroll() {
-    if (_hasReloadedOnScroll) return;
-    
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    
-    // Reload when user scrolls past 60% of content
-    if (currentScroll > maxScroll * 0.6) {
-      _hasReloadedOnScroll = true;
-      _refreshFeedInBackground();
-    }
-  }
-  
-  Future<void> _refreshFeedInBackground() async {
-    print('Auto-refreshing feed after scroll...');
-    await ref.read(feedProvider.notifier).refreshFeed();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_feed_refresh', DateTime.now().toIso8601String());
-  }
-  
-  Future<void> _checkAndRefreshFeedInBackground() async {
+  Future<void> _checkAndRefreshFeed() async {
     final prefs = await SharedPreferences.getInstance();
     final lastRefreshStr = prefs.getString('last_feed_refresh');
     final now = DateTime.now();
@@ -72,6 +48,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     bool shouldRefresh = false;
     
     if (lastRefreshStr == null) {
+      // First time, always refresh
       shouldRefresh = true;
     } else {
       final lastRefresh = DateTime.parse(lastRefreshStr);
@@ -84,14 +61,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     
     if (shouldRefresh) {
-      print('Background refresh starting...');
+      print('Auto-refreshing feed (last refresh: $lastRefreshStr)');
       await ref.read(feedProvider.notifier).refreshFeed();
       await prefs.setString('last_feed_refresh', now.toIso8601String());
+    } else {
+      // Load cached feed
+      final currentState = ref.read(feedProvider);
+      if (currentState is! AsyncData || (currentState as AsyncData).value.isEmpty) {
+        await ref.read(feedProvider.notifier).loadCachedFeed();
+      }
     }
   }
   
   Future<void> _refreshFeed() async {
-    _hasReloadedOnScroll = false;
     await ref.read(feedProvider.notifier).refreshFeed();
     // Update last refresh timestamp
     final prefs = await SharedPreferences.getInstance();
@@ -102,6 +84,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final feedState = ref.watch(feedProvider);
     final userProfile = ref.watch(userProfileProvider);
+    final friendsPosts = ref.watch(approvedPostsProvider);
+    final friendsList = ref.watch(friendsListProvider);
     
     return Scaffold(
       key: _scaffoldKey,
@@ -184,35 +168,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const PostUploadScreen()),
+          );
+        },
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) async {
           if (index == 0 && _currentIndex == 0) {
             // Tapped home while on home - refresh with new content
-            _hasReloadedOnScroll = false;
-            await _refreshFeed();
+            await ref.read(feedProvider.notifier).refreshFeed();
             return;
           }
           
           setState(() => _currentIndex = index);
           switch (index) {
             case 0:
-              // Refresh with new content when coming back to home
-              _hasReloadedOnScroll = false;
-              await _refreshFeed();
+              // Refresh home feed when coming back
+              await ref.read(feedProvider.notifier).refreshFeed();
               break;
             case 1:
               Navigator.pushNamed(context, '/discover').then((_) {
-                // Reset to home tab when coming back
                 setState(() => _currentIndex = 0);
               });
               break;
             case 2:
-              Navigator.pushNamed(context, '/bookmarks').then((_) {
+              Navigator.pushNamed(context, '/ai-chat').then((_) {
                 setState(() => _currentIndex = 0);
               });
               break;
             case 3:
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FriendsScreen()),
+              ).then((_) {
+                setState(() => _currentIndex = 0);
+              });
+              break;
+            case 4:
               Navigator.pushNamed(context, '/profile').then((_) {
                 setState(() => _currentIndex = 0);
               });
@@ -231,9 +230,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: 'Discover',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.bookmark_outline),
-            activeIcon: Icon(Icons.bookmark),
-            label: 'Bookmarks',
+            icon: Icon(Icons.chat_bubble_outline),
+            activeIcon: Icon(Icons.chat_bubble),
+            label: 'AI Chat',
+          ),
+          BottomNavigationBarItem(
+            icon: _FriendsTabIcon(isActive: false),
+            activeIcon: _FriendsTabIcon(isActive: true),
+            label: 'Friends',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
@@ -246,7 +250,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
   
   Widget _buildFeedList(List<Article> articles) {
-    if (articles.isEmpty) {
+    final friendsPosts = ref.watch(approvedPostsProvider);
+    final friendsList = ref.watch(friendsListProvider);
+    final currentUser = ref.watch(authStateProvider).value;
+    
+    if (articles.isEmpty && !friendsPosts.hasValue) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -264,19 +272,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     
+    // Get friends' user IDs
+    final friendIds = friendsList.when(
+      data: (friends) => friends.map((f) => f.uid).toSet(),
+      loading: () => <String>{},
+      error: (_, __) => <String>{},
+    );
+    
+    // Filter posts from friends only
+    final friendsPostsList = friendsPosts.when(
+      data: (posts) => currentUser != null 
+          ? posts.where((p) => friendIds.contains(p.userId) || p.userId == currentUser.uid).toList()
+          : <UserPost>[],
+      loading: () => <UserPost>[],
+      error: (_, __) => <UserPost>[],
+    );
+    
+    final totalItems = friendsPostsList.length + articles.length;
+    
     return RefreshIndicator(
       onRefresh: _refreshFeed,
       child: ListView.builder(
-        controller: _scrollController,
         padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
-        itemCount: articles.length + 1,
+        itemCount: totalItems + 1,
         physics: const AlwaysScrollableScrollPhysics(),
         addAutomaticKeepAlives: true,
         addRepaintBoundaries: true,
         cacheExtent: 500,
         itemBuilder: (context, index) {
-          if (index == articles.length) {
-            // Load more button
+          if (index == totalItems) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
@@ -288,7 +312,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           }
           
-          final article = articles[index];
+          // Show friends posts first
+          if (index < friendsPostsList.length) {
+            final post = friendsPostsList[index];
+            return _buildPostCard(post);
+          }
+          
+          // Then show articles
+          final articleIndex = index - friendsPostsList.length;
+          final article = articles[articleIndex];
           return ArticleCard(
             article: article,
             onTap: () {
@@ -303,6 +335,138 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           );
         },
       ),
+    );
+  }
+  
+  Widget _buildPostCard(UserPost post) {
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(post.userId).get(),
+      builder: (context, snapshot) {
+        final userName = snapshot.hasData && snapshot.data!.data() != null
+            ? ((snapshot.data!.data() as Map<String, dynamic>)['displayName'] as String?) ?? 'Friend'
+            : 'Friend';
+        
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PostDetailScreen(post: post),
+                ),
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (post.imagePaths.isNotEmpty)
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.file(
+                      File(post.imagePaths.first),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person, size: 16, color: AppColors.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            userName,
+                            style: AppTextStyles.uiCaption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        post.title,
+                        style: AppTextStyles.uiH3,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (post.description.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          post.description,
+                          style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(Icons.favorite_border, size: 16, color: AppColors.textSecondary),
+                          const SizedBox(width: 4),
+                          Text('${post.likesCount}', style: AppTextStyles.uiCaption),
+                          const SizedBox(width: 16),
+                          Icon(Icons.comment_outlined, size: 16, color: AppColors.textSecondary),
+                          const SizedBox(width: 4),
+                          Text('${post.commentsCount}', style: AppTextStyles.uiCaption),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FriendsTabIcon extends ConsumerWidget {
+  final bool isActive;
+  
+  const _FriendsTabIcon({required this.isActive});
+  
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unreadCount = ref.watch(unreadMessagesCountProvider);
+    final count = unreadCount.when(
+      data: (c) => c,
+      loading: () => 0,
+      error: (_, __) => 0,
+    );
+    
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(isActive ? Icons.people : Icons.people_outline),
+        if (count > 0)
+          Positioned(
+            right: -6,
+            top: -6,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 16,
+                minHeight: 16,
+              ),
+              child: Text(
+                count.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

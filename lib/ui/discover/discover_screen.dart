@@ -12,6 +12,7 @@ import '../../providers/feed_provider.dart';
 import '../../data/models/article.dart';
 import '../../data/sources/wikipedia_source.dart';
 import '../../data/sources/web_search_source.dart';
+import '../../data/sources/arxiv_source.dart';
 import '../shared/article_card.dart';
 import '../reader/reader_screen.dart';
 
@@ -28,6 +29,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   final AIService _aiService = AIService();
   final ImagePicker _imagePicker = ImagePicker();
   final WikipediaSource _wikiSource = WikipediaSource();
+  final ArxivSource _arxivSource = ArxivSource();
   final CacheService _cache = CacheService();
   final SearchHistoryService _historyService = SearchHistoryService();
   String? _selectedCategory;
@@ -35,25 +37,6 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   bool _isSearching = false;
   List<String> _searchHistory = [];
   bool _showHistory = false;
-  
-  final List<String> _categories = [
-    'Technology',
-    'Science',
-    'Research Papers',
-    'World',
-    'Space',
-    'Philosophy',
-    'Medicine',
-    'Economics',
-    'Business',
-    'Environment',
-    'AI & Machine Learning',
-    'Cybersecurity',
-    'Energy',
-    'Psychology',
-    'History',
-    'Education',
-  ];
   
   @override
   void initState() {
@@ -72,7 +55,30 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
       _searchHistory = history;
     });
   }
-
+  
+  final List<String> _categories = [
+    'Computer Science',
+    'Artificial Intelligence',
+    'Machine Learning',
+    'Physics',
+    'Mathematics',
+    'Biology',
+    'Chemistry',
+    'Medicine',
+    'Health',
+    'Engineering',
+    'Economics',
+    'Psychology',
+    'Neuroscience',
+    'Quantum Computing',
+    'Robotics',
+    'Data Science',
+    'Biotechnology',
+    'Astronomy',
+    'Climate Science',
+    'Materials Science',
+  ];
+  
   @override
   void dispose() {
     _searchController.dispose();
@@ -91,8 +97,55 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     if (_selectedCategory != null) {
       setState(() => _isSearching = true);
       try {
-        final articles = await _cache.getArticlesByCategory(_selectedCategory!);
-        ref.read(discoverSearchProvider.notifier).state = articles;
+        final query = _selectedCategory!;
+        print('Searching for category: $query');
+        
+        List<Article> allArticles = [];
+        
+        // Search arXiv for research papers
+        try {
+          final arxivArticles = await _arxivSource.searchPapers(query, limit: 20);
+          print('Found ${arxivArticles.length} arXiv papers');
+          allArticles.addAll(arxivArticles);
+        } catch (e) {
+          print('arXiv search failed: $e');
+        }
+        
+        // Search Wikipedia
+        try {
+          final wikiArticles = await _wikiSource.searchArticles(query, limit: 10);
+          print('Found ${wikiArticles.length} Wikipedia articles');
+          allArticles.addAll(wikiArticles);
+        } catch (e) {
+          print('Wikipedia search failed: $e');
+        }
+        
+        // Search web for research papers
+        try {
+          final webSearchSource = WebSearchSource();
+          final webArticles = await webSearchSource.search('$query research papers');
+          print('Found ${webArticles.length} web articles');
+          allArticles.addAll(webArticles);
+        } catch (e) {
+          print('Web search failed: $e');
+        }
+        
+        // Remove duplicates
+        final uniqueArticles = <String, Article>{};
+        for (final article in allArticles) {
+          uniqueArticles[article.sourceUrl] = article;
+        }
+        final finalArticles = uniqueArticles.values.toList();
+        
+        print('Total unique articles: ${finalArticles.length}');
+        
+        try {
+          await _cache.cacheArticles(finalArticles, isSearchResult: true);
+        } catch (e) {
+          print('Cache error (non-critical): $e');
+        }
+        
+        ref.read(discoverSearchProvider.notifier).state = finalArticles;
       } catch (e) {
         print('Error loading category: $e');
         ref.read(discoverSearchProvider.notifier).state = [];
@@ -124,6 +177,17 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
       print('Discover: Starting search for: $cleanQuery');
       
       List<Article> allArticles = [];
+      
+      // Search arXiv for research papers
+      try {
+        final arxivArticles = await _arxivSource.searchPapers(cleanQuery, limit: 20);
+        if (arxivArticles.isNotEmpty) {
+          print('Found ${arxivArticles.length} arXiv papers');
+          allArticles.addAll(arxivArticles);
+        }
+      } catch (e) {
+        print('arXiv search failed: $e');
+      }
       
       // Try Wikipedia search
       try {
@@ -158,7 +222,11 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
       print('Total unique articles: ${finalArticles.length}');
       
       if (finalArticles.isNotEmpty) {
-        await _cache.cacheArticles(finalArticles, isSearchResult: true);
+        try {
+          await _cache.cacheArticles(finalArticles, isSearchResult: true);
+        } catch (e) {
+          print('Cache error (non-critical): $e');
+        }
         ref.read(discoverSearchProvider.notifier).state = finalArticles;
       } else {
         ref.read(discoverSearchProvider.notifier).state = [];
@@ -528,14 +596,14 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
-                  _buildSuggestionChip('Artificial Intelligence'),
-                  _buildSuggestionChip('Quantum Computing'),
-                  _buildSuggestionChip('Space Exploration'),
-                  _buildSuggestionChip('Climate Change'),
-                  _buildSuggestionChip('Biotechnology'),
-                  _buildSuggestionChip('Renewable Energy'),
+                  _buildSuggestionChip('Computer Science'),
                   _buildSuggestionChip('Machine Learning'),
-                  _buildSuggestionChip('Cybersecurity'),
+                  _buildSuggestionChip('Quantum Physics'),
+                  _buildSuggestionChip('Neuroscience'),
+                  _buildSuggestionChip('Biotechnology'),
+                  _buildSuggestionChip('Data Science'),
+                  _buildSuggestionChip('Robotics'),
+                  _buildSuggestionChip('Climate Science'),
                 ],
               ),
             ],

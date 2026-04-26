@@ -14,6 +14,36 @@ class ArxivSource {
     },
   ));
   
+  Future<List<Article>> searchPapers(String query, {int limit = 20}) async {
+    try {
+      final encodedQuery = Uri.encodeComponent(query);
+      final url = '${ApiEndpoints.arxivBase}?search_query=all:$encodedQuery&sortBy=relevance&sortOrder=descending&max_results=$limit';
+      
+      // Rate limiting
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final response = await _dio.get(url);
+      final document = XmlDocument.parse(response.data);
+      
+      final entries = document.findAllElements('entry');
+      final List<Article> articles = [];
+      
+      for (final entry in entries) {
+        try {
+          final article = _parseArxivEntry(entry);
+          articles.add(article);
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      return articles;
+    } catch (e) {
+      print('Failed to search arXiv papers: $e');
+      return [];
+    }
+  }
+  
   Future<List<Article>> fetchLatestPapers({
     String category = 'cs.AI', // Computer Science - AI by default
     int limit = 20,

@@ -15,6 +15,7 @@ import 'ui/profile/profile_screen.dart';
 import 'ui/splash/splash_screen.dart';
 import 'ui/onboarding/category_preference_screen.dart';
 import 'ui/notes/notes_screen.dart';
+import 'ui/ai_chat/ai_chat_screen.dart';
 
 class OnlyFocusApp extends ConsumerWidget {
   const OnlyFocusApp({super.key});
@@ -63,6 +64,7 @@ class OnlyFocusApp extends ConsumerWidget {
         '/profile': (context) => const ProfileScreen(),
         '/category-preference': (context) => const CategoryPreferenceScreen(),
         '/notes': (context) => const NotesScreen(),
+        '/ai-chat': (context) => const AIChatScreen(),
       },
     );
   }

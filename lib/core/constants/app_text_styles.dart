@@ -6,38 +6,32 @@ class AppTextStyles {
   static TextStyle get uiH1 => GoogleFonts.inter(
         fontSize: 26,
         fontWeight: FontWeight.w600,
-        color: const Color(0xFF0F1117),
       );
   
   static TextStyle get uiH2 => GoogleFonts.inter(
         fontSize: 20,
         fontWeight: FontWeight.w600,
-        color: const Color(0xFF0F1117),
       );
   
   static TextStyle get uiH3 => GoogleFonts.inter(
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: const Color(0xFF0F1117),
       );
   
   static TextStyle get uiBody => GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         height: 1.4,
-        color: const Color(0xFF1F2937),
       );
   
   static TextStyle get uiButton => GoogleFonts.inter(
         fontSize: 15,
         fontWeight: FontWeight.w500,
-        color: const Color(0xFF0F1117),
       );
   
   static TextStyle get uiCaption => GoogleFonts.inter(
         fontSize: 12,
         fontWeight: FontWeight.w400,
-        color: const Color(0xFF4B5563),
       );
   
   // Reading fonts - default Merriweather

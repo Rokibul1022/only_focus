@@ -20,6 +20,11 @@ class UserProfile {
   final String readingPersona;
   final String? fcmToken;
   final bool notificationsEnabled;
+  final List<String> preferredCategories;
+  final String? photoUrl;
+  final String? bio;
+  final String? country;
+  final bool isOnline;
   
   UserProfile({
     required this.uid,
@@ -41,6 +46,11 @@ class UserProfile {
     required this.readingPersona,
     this.fcmToken,
     this.notificationsEnabled = true,
+    this.preferredCategories = const [],
+    this.photoUrl,
+    this.bio,
+    this.country,
+    this.isOnline = false,
   });
   
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -65,6 +75,11 @@ class UserProfile {
       readingPersona: data['readingPersona'] ?? 'The Explorer',
       fcmToken: data['fcmToken'],
       notificationsEnabled: data['notificationsEnabled'] ?? true,
+      preferredCategories: List<String>.from(data['preferredCategories'] ?? []),
+      photoUrl: data['photoUrl'],
+      bio: data['bio'],
+      country: data['country'],
+      isOnline: data['isOnline'] ?? false,
     );
   }
   
@@ -88,6 +103,11 @@ class UserProfile {
     'readingPersona': readingPersona,
     'fcmToken': fcmToken,
     'notificationsEnabled': notificationsEnabled,
+    'preferredCategories': preferredCategories,
+    'photoUrl': photoUrl,
+    'bio': bio,
+    'country': country,
+    'isOnline': isOnline,
   };
   
   // Helper to create initial user profile
@@ -115,6 +135,8 @@ class UserProfile {
       totalFocusSessions: 0,
       readingPersona: 'The Explorer',
       notificationsEnabled: true,
+      preferredCategories: [],
+      isOnline: false,
     );
   }
 }

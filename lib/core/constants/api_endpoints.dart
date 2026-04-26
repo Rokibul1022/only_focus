@@ -1,8 +1,10 @@
+import 'api_keys.dart';
+
 class ApiEndpoints {
   // News APIs
   static const String hackerNewsBase = 'https://hacker-news.firebaseio.com/v0';
   static const String newsApiBase = 'https://newsapi.org/v2';
-  static const String newsApiKey = 'd37d935775f64881b00f3f508c66994d';
+  static const String newsApiKey = ApiKeys.newsApiKey;
   static const String guardianBase = 'https://content.guardianapis.com';
   
   // RSS Feeds
@@ -21,7 +23,12 @@ class ApiEndpoints {
   
   // AI APIs
   static const String groqApiBase = 'https://api.groq.com/openai/v1';
-  static const String groqApiKey = 'YOUR_GROQ_API_KEY_HERE'; // Replace with your key
+  static const String groqApiKey = ApiKeys.groqApiKey;
   static const String openRouterApiBase = 'https://openrouter.ai/api/v1';
-  static const String openRouterApiKey = 'YOUR_OPENROUTER_API_KEY_HERE';
+  static const String openRouterApiKey = ApiKeys.openRouterApiKey;
+  
+  // ElevenLabs API
+  static const String elevenLabsApiBase = 'https://api.elevenlabs.io/v1';
+  static const String elevenLabsApiKey = ApiKeys.elevenLabsApiKey;
+  static const String elevenLabsVoiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Default voice
 }

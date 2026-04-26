@@ -4,6 +4,10 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../core/utils/star_calculator.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/posts_provider.dart';
+import '../../data/models/user_post.dart';
+import '../posts/post_detail_screen.dart';
+import 'dart:io';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -195,6 +199,10 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 24),
+                
+                // User Posts Section
+                _buildPostsSection(context, ref, profile.uid),
               ],
             ),
           );
@@ -222,6 +230,106 @@ class ProfileScreen extends ConsumerWidget {
       default:
         return AppColors.rankNovice;
     }
+  }
+  
+  Widget _buildPostsSection(BuildContext context, WidgetRef ref, String userId) {
+    final userPosts = ref.watch(userPostsProvider(userId));
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('My Posts', style: AppTextStyles.uiH3),
+        const SizedBox(height: 12),
+        userPosts.when(
+          data: (posts) {
+            if (posts.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.post_add, size: 48, color: AppColors.textSecondary),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No posts yet',
+                        style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: posts.length,
+              itemBuilder: (context, index) {
+                final post = posts[index];
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PostDetailScreen(post: post),
+                      ),
+                    );
+                  },
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(post.imagePaths.first),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                      ),
+                      if (post.status == PostStatus.pending)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.schedule, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      if (post.status == PostStatus.rejected)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.block, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => const SizedBox.shrink(),
+        ),
+      ],
+    );
   }
 }
 

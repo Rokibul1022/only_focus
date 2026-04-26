@@ -91,6 +91,16 @@ class AppDrawer extends ConsumerWidget {
             },
           ),
           
+          // Bookmarks
+          ListTile(
+            leading: const Icon(Icons.bookmark_outline),
+            title: const Text('Bookmarks'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/bookmarks');
+            },
+          ),
+          
           // Notes
           ListTile(
             leading: const Icon(Icons.note),
