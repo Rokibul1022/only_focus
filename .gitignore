@@ -95,6 +95,7 @@ firebase-debug.log
 
 # API Keys and Secrets
 **/lib/core/config/api_keys.dart
+lib/core/constants/api_keys.dart
 
 # Generated files
 *.g.dart
