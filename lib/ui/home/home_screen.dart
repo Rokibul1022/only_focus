@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
+import '../../core/services/cache_service.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../data/models/article.dart';
-import '../../data/models/user_post.dart';
 import '../shared/article_card.dart';
 import '../reader/reader_screen.dart';
 import '../shared/app_drawer.dart';
@@ -19,6 +17,8 @@ import '../../providers/friends_provider.dart';
 import '../../providers/messages_provider.dart';
 import '../../providers/posts_provider.dart';
 import '../posts/post_detail_screen.dart';
+import '../feedback/feedback_form_dialog.dart';
+import '../feedback/feedback_list_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -37,7 +37,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Check and refresh feed if needed
     Future.microtask(() async {
       await _checkAndRefreshFeed();
+      await _syncBookmarks();
     });
+  }
+  
+  Future<void> _syncBookmarks() async {
+    try {
+      final user = ref.read(authStateProvider).value;
+      if (user != null) {
+        final cache = CacheService();
+        await cache.syncBookmarksFromFirestore(user.uid);
+      }
+    } catch (e) {
+      print('Error syncing bookmarks: $e');
+    }
   }
   
   Future<void> _checkAndRefreshFeed() async {
@@ -84,8 +97,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final feedState = ref.watch(feedProvider);
     final userProfile = ref.watch(userProfileProvider);
-    final friendsPosts = ref.watch(approvedPostsProvider);
-    final friendsList = ref.watch(friendsListProvider);
     
     return Scaffold(
       key: _scaffoldKey,
@@ -113,6 +124,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
         actions: [
+          // Feedback button
+          IconButton(
+            icon: const Icon(Icons.feedback_outlined, color: AppColors.primary),
+            tooltip: 'Give Feedback',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => const FeedbackFormDialog(),
+              );
+            },
+          ),
+          // View all feedback
+          IconButton(
+            icon: const Icon(Icons.list_alt, color: AppColors.primary),
+            tooltip: 'View Feedback',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FeedbackListScreen(),
+                ),
+              );
+            },
+          ),
           // Stars display
           userProfile.when(
             data: (profile) {
@@ -170,10 +205,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PostUploadScreen()),
-          );
+          Navigator.pushNamed(context, '/friends');
         },
         backgroundColor: AppColors.primary,
         child: const Icon(Icons.add, color: Colors.white),
@@ -204,10 +236,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               });
               break;
             case 3:
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const FriendsScreen()),
-              ).then((_) {
+              Navigator.pushNamed(context, '/friends').then((_) {
                 setState(() => _currentIndex = 0);
               });
               break;
@@ -235,8 +264,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: 'AI Chat',
           ),
           BottomNavigationBarItem(
-            icon: _FriendsTabIcon(isActive: false),
-            activeIcon: _FriendsTabIcon(isActive: true),
+            icon: Icon(Icons.people_outline),
+            activeIcon: Icon(Icons.people),
             label: 'Friends',
           ),
           BottomNavigationBarItem(
@@ -250,11 +279,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
   
   Widget _buildFeedList(List<Article> articles) {
-    final friendsPosts = ref.watch(approvedPostsProvider);
-    final friendsList = ref.watch(friendsListProvider);
-    final currentUser = ref.watch(authStateProvider).value;
-    
-    if (articles.isEmpty && !friendsPosts.hasValue) {
+    if (articles.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -272,35 +297,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     
-    // Get friends' user IDs
-    final friendIds = friendsList.when(
-      data: (friends) => friends.map((f) => f.uid).toSet(),
-      loading: () => <String>{},
-      error: (_, __) => <String>{},
-    );
-    
-    // Filter posts from friends only
-    final friendsPostsList = friendsPosts.when(
-      data: (posts) => currentUser != null 
-          ? posts.where((p) => friendIds.contains(p.userId) || p.userId == currentUser.uid).toList()
-          : <UserPost>[],
-      loading: () => <UserPost>[],
-      error: (_, __) => <UserPost>[],
-    );
-    
-    final totalItems = friendsPostsList.length + articles.length;
-    
     return RefreshIndicator(
       onRefresh: _refreshFeed,
       child: ListView.builder(
         padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
-        itemCount: totalItems + 1,
+        itemCount: articles.length + 1,
         physics: const AlwaysScrollableScrollPhysics(),
         addAutomaticKeepAlives: true,
         addRepaintBoundaries: true,
         cacheExtent: 500,
         itemBuilder: (context, index) {
-          if (index == totalItems) {
+          if (index == articles.length) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
@@ -312,15 +319,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           }
           
-          // Show friends posts first
-          if (index < friendsPostsList.length) {
-            final post = friendsPostsList[index];
-            return _buildPostCard(post);
-          }
-          
-          // Then show articles
-          final articleIndex = index - friendsPostsList.length;
-          final article = articles[articleIndex];
+          final article = articles[index];
           return ArticleCard(
             article: article,
             onTap: () {
@@ -328,145 +327,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ReaderScreen(articleId: article.id),
+                  builder: (context) => ReaderScreen(article: article),
                 ),
               );
             },
           );
         },
       ),
-    );
-  }
-  
-  Widget _buildPostCard(UserPost post) {
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(post.userId).get(),
-      builder: (context, snapshot) {
-        final userName = snapshot.hasData && snapshot.data!.data() != null
-            ? ((snapshot.data!.data() as Map<String, dynamic>)['displayName'] as String?) ?? 'Friend'
-            : 'Friend';
-        
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PostDetailScreen(post: post),
-                ),
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (post.imagePaths.isNotEmpty)
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Image.file(
-                      File(post.imagePaths.first),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.person, size: 16, color: AppColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            userName,
-                            style: AppTextStyles.uiCaption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        post.title,
-                        style: AppTextStyles.uiH3,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (post.description.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          post.description,
-                          style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Icon(Icons.favorite_border, size: 16, color: AppColors.textSecondary),
-                          const SizedBox(width: 4),
-                          Text('${post.likesCount}', style: AppTextStyles.uiCaption),
-                          const SizedBox(width: 16),
-                          Icon(Icons.comment_outlined, size: 16, color: AppColors.textSecondary),
-                          const SizedBox(width: 4),
-                          Text('${post.commentsCount}', style: AppTextStyles.uiCaption),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _FriendsTabIcon extends ConsumerWidget {
-  final bool isActive;
-  
-  const _FriendsTabIcon({required this.isActive});
-  
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unreadCount = ref.watch(unreadMessagesCountProvider);
-    final count = unreadCount.when(
-      data: (c) => c,
-      loading: () => 0,
-      error: (_, __) => 0,
-    );
-    
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(isActive ? Icons.people : Icons.people_outline),
-        if (count > 0)
-          Positioned(
-            right: -6,
-            top: -6,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
-              constraints: const BoxConstraints(
-                minWidth: 16,
-                minHeight: 16,
-              ),
-              child: Text(
-                count.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

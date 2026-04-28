@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -12,6 +13,8 @@ import '../../core/services/cache_service.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/article_scraper_service.dart';
 import '../../core/services/tts_service.dart';
+import '../../core/services/enhanced_ai_service.dart';
+import '../../core/services/collections_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../data/models/article.dart';
 import '../notes/note_editor_screen.dart';
@@ -35,6 +38,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final AIService _aiService = AIService();
   final ArticleScraperService _scraper = ArticleScraperService();
   final TtsService _ttsService = TtsService();
+  final EnhancedAIService _enhancedAI = EnhancedAIService();
   Article? _article;
   bool _isLoading = true;
   final bool _isLoadingContent = false;
@@ -326,10 +330,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   void _updateReadingProgress(double progress) {
     setState(() => _readingProgress = progress);
     
-    if (progress >= 0.6 && _article != null && !_article!.isRead) {
+    if (progress >= 0.6 && _article != null) {
+      final wasAlreadyRead = _article!.isRead;
       final durationSec = DateTime.now().difference(_startTime!).inSeconds;
       _cache.markAsRead(_article!.id, progress: progress, durationSec: durationSec);
-      _updateUserStats(durationSec);
+      _article!.isRead = true;
+      
+      // Only update stats if article wasn't already read
+      if (!wasAlreadyRead) {
+        _updateUserStats(durationSec);
+      }
     }
   }
   
@@ -456,49 +466,55 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             ),
             
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.note_add),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => NoteEditorScreen(
-                            articleId: _article!.id,
-                            articleTitle: _article!.title,
-                            articleUrl: _article!.sourceUrl,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
+                    IconButton(
+                      icon: const Icon(Icons.note_add),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NoteEditorScreen(
+                              articleId: _article!.id,
+                              articleTitle: _article!.title,
+                              articleUrl: _article!.sourceUrl,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: Icon(_isTtsPlaying ? (_isTtsPaused ? Icons.play_arrow : Icons.pause) : Icons.volume_up),
-                    onPressed: _toggleTts,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.summarize),
-                    onPressed: _isLoadingSummary ? null : _showAISummary,
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      _article!.isBookmarked ? Icons.bookmark : Icons.bookmark_outline,
-                      color: _article!.isBookmarked ? AppColors.primary : null,
+                        );
+                      },
                     ),
-                    onPressed: () async {
-                      await _cache.toggleBookmark(_article!.id);
-                      final updated = await _cache.getArticleById(_article!.id);
-                      if (updated != null && mounted) {
-                        setState(() => _article = updated);
-                      }
-                    },
-                  ),
-                  IconButton(icon: const Icon(Icons.share), onPressed: _showShareDialog),
-                ],
+                    IconButton(
+                      icon: Icon(_isTtsPlaying ? (_isTtsPaused ? Icons.play_arrow : Icons.pause) : Icons.volume_up),
+                      onPressed: _toggleTts,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.summarize),
+                      onPressed: _isLoadingSummary ? null : _showAISummary,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.folder_outlined),
+                      onPressed: _showCollectionsDialog,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        _article!.isBookmarked ? Icons.bookmark : Icons.bookmark_outline,
+                        color: _article!.isBookmarked ? AppColors.primary : null,
+                      ),
+                      onPressed: () async {
+                        await _cache.toggleBookmark(_article!.id);
+                        final updated = await _cache.getArticleById(_article!.id);
+                        if (updated != null && mounted) {
+                          setState(() => _article = updated);
+                        }
+                      },
+                    ),
+                    IconButton(icon: const Icon(Icons.share), onPressed: _showShareDialog),
+                  ],
+                ),
               ),
             ),
             
@@ -518,9 +534,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.backgroundLight,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -539,7 +555,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Share Article', style: AppTextStyles.uiH2),
+                  Text('Share Article', style: AppTextStyles.uiH2.copyWith(
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                  )),
                   const SizedBox(height: 20),
                   ListTile(
                     leading: const Icon(Icons.copy, color: AppColors.primary),
@@ -575,12 +593,165 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Future<void> _showAISummary() async {
     if (_article == null) return;
     
-    setState(() => _isLoadingSummary = true);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.5,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'AI Summary Options',
+                    style: AppTextStyles.uiH2.copyWith(
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Choose summary type',
+                    style: AppTextStyles.uiCaption.copyWith(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                children: [
+                  _buildSummaryOption(
+                    context,
+                    icon: Icons.flash_on,
+                    title: 'Quick Summary',
+                    subtitle: '3-5 key points',
+                    color: Colors.orange,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _generateQuickSummary();
+                    },
+                  ),
+                  _buildSummaryOption(
+                    context,
+                    icon: Icons.article,
+                    title: 'Detailed Summary',
+                    subtitle: 'Comprehensive overview',
+                    color: Colors.blue,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _generateDetailedSummary();
+                    },
+                  ),
+                  _buildSummaryOption(
+                    context,
+                    icon: Icons.lightbulb,
+                    title: 'Key Points',
+                    subtitle: 'Main takeaways',
+                    color: Colors.amber,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _generateKeyPoints();
+                    },
+                  ),
+                  _buildSummaryOption(
+                    context,
+                    icon: Icons.school,
+                    title: 'Study Notes',
+                    subtitle: 'Structured notes',
+                    color: Colors.green,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _generateStudyNotes();
+                    },
+                  ),
+                  _buildSummaryOption(
+                    context,
+                    icon: Icons.quiz,
+                    title: 'Generate Quiz',
+                    subtitle: 'Test your knowledge',
+                    color: Colors.purple,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _generateQuiz();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildSummaryOption(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(
+          title,
+          style: AppTextStyles.uiBody.copyWith(
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: AppTextStyles.uiCaption.copyWith(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: onTap,
+      ),
+    );
+  }
+  
+  Future<void> _generateQuickSummary() async {
+    if (_articleContent == null || _articleContent!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading article content...'), duration: Duration(seconds: 2)),
+      );
+      return;
+    }
     
+    setState(() => _isLoadingSummary = true);
     try {
-      final articleText = '${_article!.title}. ${_article!.summary ?? ''}';
-      final summary = await _aiService.generateSummary(articleText);
-      
+      final summary = await _enhancedAI.generateQuickSummary(_articleContent!);
       if (mounted) {
         setState(() {
           _summary = summary;
@@ -589,13 +760,267 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         _showSummaryBottomSheet();
       }
     } catch (e) {
-      setState(() => _isLoadingSummary = false);
       if (mounted) {
+        setState(() => _isLoadingSummary = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate summary: ${e.toString()}'), backgroundColor: AppColors.warning),
+          SnackBar(content: Text('Error: $e'), duration: const Duration(seconds: 3)),
         );
       }
     }
+  }
+  
+  Future<void> _generateDetailedSummary() async {
+    if (_articleContent == null || _articleContent!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading article content...'), duration: Duration(seconds: 2)),
+      );
+      return;
+    }
+    
+    setState(() => _isLoadingSummary = true);
+    try {
+      final summary = await _enhancedAI.generateDetailedSummary(_articleContent!);
+      if (mounted) {
+        setState(() {
+          _summary = [summary];
+          _isLoadingSummary = false;
+        });
+        _showSummaryBottomSheet();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingSummary = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+  }
+  
+  Future<void> _generateKeyPoints() async {
+    if (_articleContent == null || _articleContent!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading article content...'), duration: Duration(seconds: 2)),
+      );
+      return;
+    }
+    
+    setState(() => _isLoadingSummary = true);
+    try {
+      final points = await _enhancedAI.extractKeyPoints(_articleContent!);
+      if (mounted) {
+        setState(() {
+          _summary = points;
+          _isLoadingSummary = false;
+        });
+        _showSummaryBottomSheet();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingSummary = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+  }
+  
+  Future<void> _generateStudyNotes() async {
+    if (_articleContent == null || _articleContent!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading article content...'), duration: Duration(seconds: 2)),
+      );
+      return;
+    }
+    
+    setState(() => _isLoadingSummary = true);
+    try {
+      final notes = await _enhancedAI.generateStudyNotes(_articleContent!);
+      if (mounted) {
+        setState(() {
+          _summary = [notes];
+          _isLoadingSummary = false;
+        });
+        _showSummaryBottomSheet();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingSummary = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+  }
+  
+  Future<void> _generateQuiz() async {
+    if (_articleContent == null || _articleContent!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading article content...'), duration: Duration(seconds: 2)),
+      );
+      return;
+    }
+    
+    setState(() => _isLoadingSummary = true);
+    try {
+      final quiz = await _enhancedAI.generateQuiz(_articleContent!);
+      if (mounted) {
+        setState(() => _isLoadingSummary = false);
+        if (quiz.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to generate quiz. Please try again.'), duration: Duration(seconds: 3)),
+          );
+        } else {
+          _showQuizDialog(quiz);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingSummary = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate quiz: ${e.toString()}'), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+  }
+  
+  void _showQuizDialog(List<QuizQuestion> questions) {
+    showDialog(
+      context: context,
+      builder: (context) => _QuizDialog(
+        questions: questions,
+        article: _article!,
+      ),
+    );
+  }
+  
+  void _showCollectionsDialog() async {
+    final cache = CacheService();
+    final isar = await cache.getIsar();
+    final collectionsService = CollectionsService(isar);
+    final collections = await collectionsService.getAllCollections();
+    
+    if (!mounted) return;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Text('Add to Collection', style: AppTextStyles.uiH2.copyWith(
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                  )),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: collections.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.folder_outlined, size: 64, color: AppColors.textSecondary),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No collections yet',
+                            style: AppTextStyles.uiBody.copyWith(
+                              color: Theme.of(context).textTheme.bodyMedium?.color,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              Navigator.pushNamed(context, '/collections');
+                            },
+                            icon: const Icon(Icons.add),
+                            label: const Text('Create Collection'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: collections.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          return ListTile(
+                            leading: const Icon(Icons.add_circle, color: AppColors.primary),
+                            title: const Text('Create New Collection'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.pushNamed(context, '/collections');
+                            },
+                          );
+                        }
+                        
+                        final collection = collections[index - 1];
+                        final isAdded = collection.articleIds.contains(_article!.id);
+                        
+                        return ListTile(
+                          leading: Icon(
+                            Icons.folder,
+                            color: isAdded ? AppColors.primary : AppColors.textSecondary,
+                          ),
+                          title: Text(collection.name),
+                          subtitle: Text('${collection.articleCount} articles'),
+                          trailing: isAdded
+                              ? const Icon(Icons.check_circle, color: AppColors.primary)
+                              : null,
+                          onTap: () async {
+                            if (isAdded) {
+                              await collectionsService.removeArticleFromCollection(
+                                collection.collectionId,
+                                _article!.id,
+                              );
+                            } else {
+                              await collectionsService.addArticleToCollection(
+                                collection.collectionId,
+                                _article!.id,
+                              );
+                            }
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(isAdded ? 'Removed from collection' : 'Added to collection'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
   
   void _showSummaryBottomSheet() {
@@ -608,9 +1033,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           height: MediaQuery.of(context).size.height * 0.6,
-          decoration: const BoxDecoration(
-            color: AppColors.backgroundLight,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -640,7 +1065,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('AI Summary', style: AppTextStyles.uiH2),
+                          Text('AI Summary', style: AppTextStyles.uiH2.copyWith(
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          )),
                           Text(
                             'Key takeaways from this article',
                             style: AppTextStyles.uiCaption.copyWith(color: AppColors.textSecondary),
@@ -705,7 +1132,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(_summary![index], style: AppTextStyles.uiBody.copyWith(height: 1.5)),
+                            child: Text(
+                              _summary![index],
+                              style: AppTextStyles.uiBody.copyWith(
+                                height: 1.5,
+                                color: Theme.of(context).textTheme.bodyLarge?.color,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -744,5 +1177,113 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         });
       }
     });
+  }
+}
+
+
+class _QuizDialog extends StatefulWidget {
+  final List<QuizQuestion> questions;
+  final Article article;
+  
+  const _QuizDialog({required this.questions, required this.article});
+  
+  @override
+  State<_QuizDialog> createState() => _QuizDialogState();
+}
+
+class _QuizDialogState extends State<_QuizDialog> {
+  int _currentQuestion = 0;
+  String? _selectedAnswer;
+  int _score = 0;
+  bool _showResult = false;
+  
+  Future<void> _saveQuizResult() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      
+      await FirebaseFirestore.instance.collection('quiz_results').add({
+        'userId': user.uid,
+        'articleId': widget.article.id,
+        'articleTitle': widget.article.title,
+        'articleUrl': widget.article.sourceUrl,
+        'totalQuestions': widget.questions.length,
+        'correctAnswers': _score,
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error saving quiz result: $e');
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (_showResult) {
+      return AlertDialog(
+        title: const Text('Quiz Complete!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.emoji_events, size: 64, color: _score >= widget.questions.length * 0.7 ? Colors.amber : AppColors.primary),
+            const SizedBox(height: 16),
+            Text('Your Score: $_score/${widget.questions.length}', style: AppTextStyles.uiH2),
+            const SizedBox(height: 8),
+            Text('${((_score / widget.questions.length) * 100).toInt()}%', style: AppTextStyles.uiBody),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      );
+    }
+    
+    final question = widget.questions[_currentQuestion];
+    
+    return AlertDialog(
+      title: Text('Question ${_currentQuestion + 1}/${widget.questions.length}'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(question.question, style: AppTextStyles.uiBody.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+            ...['A', 'B', 'C', 'D'].asMap().entries.map((entry) {
+              final letter = entry.key;
+              final option = question.options[letter];
+              final optionLetter = String.fromCharCode(65 + letter);
+              
+              return RadioListTile<String>(
+                title: Text('$optionLetter) $option'),
+                value: optionLetter,
+                groupValue: _selectedAnswer,
+                onChanged: (value) => setState(() => _selectedAnswer = value),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _selectedAnswer == null ? null : () {
+            if (_selectedAnswer == question.correctAnswer) {
+              _score++;
+            }
+            
+            if (_currentQuestion < widget.questions.length - 1) {
+              setState(() {
+                _currentQuestion++;
+                _selectedAnswer = null;
+              });
+            } else {
+              setState(() => _showResult = true);
+              _saveQuizResult();
+            }
+          },
+          child: Text(_currentQuestion < widget.questions.length - 1 ? 'Next' : 'Finish'),
+        ),
+      ],
+    );
   }
 }

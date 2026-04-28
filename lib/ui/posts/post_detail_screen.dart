@@ -225,11 +225,15 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.post.title, style: AppTextStyles.uiH2),
+                        Text(widget.post.title, style: AppTextStyles.uiH2.copyWith(
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                        )),
                         const SizedBox(height: 8),
                         Text(
                           widget.post.description,
-                          style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+                          style: AppTextStyles.uiBody.copyWith(
+                            color: Theme.of(context).textTheme.bodyMedium?.color,
+                          ),
                         ),
                       ],
                     ),
@@ -240,7 +244,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   // Comments section
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('Comments', style: AppTextStyles.uiH3),
+                    child: Text('Comments', style: AppTextStyles.uiH3.copyWith(
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    )),
                   ),
                   const SizedBox(height: 12),
 
@@ -263,7 +269,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           child: Center(
                             child: Text(
                               'No comments yet',
-                              style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+                              style: AppTextStyles.uiBody.copyWith(
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                              ),
                             ),
                           ),
                         );
@@ -313,12 +321,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(user.displayName, style: AppTextStyles.uiBody),
+                                          Text(
+                                            user.displayName,
+                                            style: AppTextStyles.uiBody.copyWith(
+                                              color: Theme.of(context).textTheme.bodyLarge?.color,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                           const SizedBox(height: 4),
                                           Text(
                                             text,
                                             style: AppTextStyles.uiBody.copyWith(
-                                              color: AppColors.textSecondary,
+                                              color: Theme.of(context).textTheme.bodyMedium?.color,
                                             ),
                                           ),
                                         ],
@@ -342,7 +356,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surfaceLight,
+              color: Theme.of(context).cardColor,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -363,7 +377,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: Theme.of(context).scaffoldBackgroundColor,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
                   ),

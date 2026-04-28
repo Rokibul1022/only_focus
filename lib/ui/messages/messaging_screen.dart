@@ -235,12 +235,16 @@ class _MessagingScreenState extends ConsumerState<MessagingScreen> {
                         const SizedBox(height: 16),
                         Text(
                           'No messages yet',
-                          style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+                          style: AppTextStyles.uiBody.copyWith(
+                            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Send a message to start chatting',
-                          style: AppTextStyles.uiCaption.copyWith(color: AppColors.textSecondary),
+                          style: AppTextStyles.uiCaption.copyWith(
+                            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+                          ),
                         ),
                       ],
                     ),
@@ -295,13 +299,13 @@ class _MessagingScreenState extends ConsumerState<MessagingScreen> {
                               maxWidth: MediaQuery.of(context).size.width * 0.7,
                             ),
                             decoration: BoxDecoration(
-                              color: isMe ? AppColors.primary : AppColors.surfaceLight,
+                              color: isMe ? AppColors.primary : Theme.of(context).cardColor,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Text(
                               text,
                               style: AppTextStyles.uiBody.copyWith(
-                                color: isMe ? Colors.white : AppColors.textPrimary,
+                                color: isMe ? Colors.white : Theme.of(context).textTheme.bodyLarge?.color,
                               ),
                             ),
                           ),
@@ -311,7 +315,7 @@ class _MessagingScreenState extends ConsumerState<MessagingScreen> {
                               child: Text(
                                 timeStr,
                                 style: AppTextStyles.uiCaption.copyWith(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
                                   fontSize: 10,
                                 ),
                               ),
@@ -327,7 +331,7 @@ class _MessagingScreenState extends ConsumerState<MessagingScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surfaceLight,
+              color: Theme.of(context).cardColor,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -348,7 +352,7 @@ class _MessagingScreenState extends ConsumerState<MessagingScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: Theme.of(context).scaffoldBackgroundColor,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
                     maxLines: null,

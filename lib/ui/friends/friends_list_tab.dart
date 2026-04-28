@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/friends_provider.dart';
@@ -83,8 +84,10 @@ class FriendsListTab extends ConsumerWidget {
                     CircleAvatar(
                       radius: 28,
                       backgroundColor: AppColors.primary.withOpacity(0.1),
-                      backgroundImage: friend.photoUrl != null ? NetworkImage(friend.photoUrl!) : null,
-                      child: friend.photoUrl == null
+                      backgroundImage: friend.photoUrl != null && friend.photoUrl!.isNotEmpty
+                          ? FileImage(File(friend.photoUrl!))
+                          : null,
+                      child: friend.photoUrl == null || friend.photoUrl!.isEmpty
                           ? Text(
                               friend.displayName[0].toUpperCase(),
                               style: AppTextStyles.uiH3.copyWith(color: AppColors.primary),

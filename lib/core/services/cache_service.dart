@@ -1,7 +1,10 @@
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/models/article.dart';
 import '../../data/models/note.dart';
+import '../../data/models/article_collection.dart';
 
 class CacheService {
   static Isar? _isar;
@@ -11,12 +14,14 @@ class CacheService {
     
     final dir = await getApplicationDocumentsDirectory();
     _isar = await Isar.open(
-      [ArticleSchema, NoteSchema],
+      [ArticleSchema, NoteSchema, ArticleCollectionSchema],
       directory: dir.path,
     );
     
     return _isar!;
   }
+  
+  Future<Isar> getIsar() async => await isar;
   
   // Cache articles in batches for better performance
   Future<void> cacheArticles(List<Article> articles, {bool isSearchResult = false}) async {
@@ -125,6 +130,95 @@ class CacheService {
     if (article != null) {
       article.isBookmarked = !article.isBookmarked;
       await updateArticle(article);
+      
+      // Sync to Firestore
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await _syncBookmarkToFirestore(user.uid, articleId, article.isBookmarked, article);
+        }
+      } catch (e) {
+        print('Error syncing bookmark to Firestore: $e');
+      }
+    }
+  }
+  
+  Future<void> _syncBookmarkToFirestore(String userId, String articleId, bool isBookmarked, Article article) async {
+    try {
+      if (isBookmarked) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('bookmarks')
+            .doc(articleId)
+            .set({
+          'articleId': articleId,
+          'title': article.title,
+          'sourceUrl': article.sourceUrl,
+          'sourceName': article.sourceName,
+          'imageUrl': article.imageUrl,
+          'category': article.category,
+          'contentType': article.contentType,
+          'publishedAt': article.publishedAt.toIso8601String(),
+          'bookmarkedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('bookmarks')
+            .doc(articleId)
+            .delete();
+      }
+    } catch (e) {
+      print('Firestore sync error: $e');
+    }
+  }
+  
+  // Load bookmarks from Firestore on login
+  Future<void> syncBookmarksFromFirestore(String userId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('bookmarks')
+          .get();
+      
+      final db = await isar;
+      
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final articleId = data['articleId'] as String;
+        
+        // Check if article exists in local DB
+        final existingArticle = await getArticleById(articleId);
+        
+        if (existingArticle != null) {
+          // Update bookmark status
+          existingArticle.isBookmarked = true;
+          await updateArticle(existingArticle);
+        } else {
+          // Create article from Firestore data
+          final article = Article()
+            ..id = articleId
+            ..title = data['title'] ?? 'Bookmarked Article'
+            ..sourceUrl = data['sourceUrl'] ?? ''
+            ..sourceName = data['sourceName'] ?? ''
+            ..imageUrl = data['imageUrl']
+            ..category = data['category'] ?? 'General'
+            ..contentType = data['contentType'] ?? 'article'
+            ..publishedAt = DateTime.parse(data['publishedAt'] ?? DateTime.now().toIso8601String())
+            ..fetchedAt = DateTime.now()
+            ..estimatedReadingMinutes = 5
+            ..isBookmarked = true;
+          
+          await db.writeTxn(() async {
+            await db.articles.put(article);
+          });
+        }
+      }
+    } catch (e) {
+      print('Error syncing bookmarks from Firestore: $e');
     }
   }
   

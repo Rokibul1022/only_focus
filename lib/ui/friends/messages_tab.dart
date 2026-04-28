@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/auth_provider.dart';
@@ -194,8 +195,10 @@ class MessagesTab extends ConsumerWidget {
                             CircleAvatar(
                               radius: 28,
                               backgroundColor: AppColors.primary.withOpacity(0.1),
-                              backgroundImage: friendPhotoUrl != null ? NetworkImage(friendPhotoUrl) : null,
-                              child: friendPhotoUrl == null
+                              backgroundImage: friendPhotoUrl != null && friendPhotoUrl.isNotEmpty
+                                  ? FileImage(File(friendPhotoUrl))
+                                  : null,
+                              child: friendPhotoUrl == null || friendPhotoUrl.isEmpty
                                   ? Text(
                                       friendName[0].toUpperCase(),
                                       style: AppTextStyles.uiH3.copyWith(color: AppColors.primary),
@@ -221,13 +224,14 @@ class MessagesTab extends ConsumerWidget {
                           friendName,
                           style: AppTextStyles.uiBody.copyWith(
                             fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
                           ),
                         ),
                         subtitle: hasChat && lastMessage.isNotEmpty
                             ? Text(
                                 isMe ? 'You: $lastMessage' : lastMessage,
                                 style: AppTextStyles.uiCaption.copyWith(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
                                   fontWeight: unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
                                 ),
                                 maxLines: 1,
@@ -235,7 +239,9 @@ class MessagesTab extends ConsumerWidget {
                               )
                             : Text(
                                 'Tap to start chatting',
-                                style: AppTextStyles.uiCaption.copyWith(color: AppColors.textSecondary),
+                                style: AppTextStyles.uiCaption.copyWith(
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                                ),
                               ),
                         trailing: hasChat && timeStr.isNotEmpty
                             ? Column(
@@ -245,7 +251,7 @@ class MessagesTab extends ConsumerWidget {
                                   Text(
                                     timeStr,
                                     style: AppTextStyles.uiCaption.copyWith(
-                                      color: AppColors.textSecondary,
+                                      color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
                                       fontSize: 11,
                                     ),
                                   ),

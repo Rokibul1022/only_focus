@@ -8,13 +8,16 @@ import '../../core/services/ocr_service.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/cache_service.dart';
 import '../../core/services/search_history_service.dart';
+import '../../core/services/books_service.dart';
 import '../../providers/feed_provider.dart';
 import '../../data/models/article.dart';
+import '../../data/models/book.dart';
 import '../../data/sources/wikipedia_source.dart';
 import '../../data/sources/web_search_source.dart';
 import '../../data/sources/arxiv_source.dart';
 import '../shared/article_card.dart';
 import '../reader/reader_screen.dart';
+import '../books/book_reader_screen.dart';
 
 class DiscoverScreen extends ConsumerStatefulWidget {
   const DiscoverScreen({super.key});
@@ -23,7 +26,7 @@ class DiscoverScreen extends ConsumerStatefulWidget {
   ConsumerState<DiscoverScreen> createState() => _DiscoverScreenState();
 }
 
-class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
+class _DiscoverScreenState extends ConsumerState<DiscoverScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final OcrService _ocrService = OcrService();
   final AIService _aiService = AIService();
@@ -32,22 +35,14 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   final ArxivSource _arxivSource = ArxivSource();
   final CacheService _cache = CacheService();
   final SearchHistoryService _historyService = SearchHistoryService();
+  final BooksService _booksService = BooksService();
+  late TabController _tabController;
   String? _selectedCategory;
   bool _isProcessingImage = false;
   bool _isSearching = false;
   List<String> _searchHistory = [];
   bool _showHistory = false;
-  
-  @override
-  void initState() {
-    super.initState();
-    _loadSearchHistory();
-    _searchController.addListener(() {
-      setState(() {
-        _showHistory = _searchController.text.isEmpty;
-      });
-    });
-  }
+  List<Book> _books = [];
 
   Future<void> _loadSearchHistory() async {
     final history = await _historyService.getDiscoverHistory();
@@ -79,13 +74,82 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     'Materials Science',
   ];
   
+  final List<String> _bookCategories = [
+    'Science Fiction',
+    'Fantasy',
+    'Mystery',
+    'Thriller',
+    'Romance',
+    'Horror',
+    'Biography',
+    'History',
+    'Philosophy',
+    'Psychology',
+    'Self Help',
+    'Business',
+    'Technology',
+    'Programming',
+    'Mathematics',
+    'Physics',
+    'Chemistry',
+    'Biology',
+    'Medicine',
+    'Art',
+    'Music',
+    'Poetry',
+    'Drama',
+    'Adventure',
+    'Classic Literature',
+  ];
+  
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadSearchHistory();
+    _searchController.addListener(() {
+      setState(() {
+        _showHistory = _searchController.text.isEmpty;
+      });
+    });
+  }
+  
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     _ocrService.dispose();
-    // Clear discover search when leaving
     ref.read(discoverSearchProvider.notifier).state = [];
     super.dispose();
+  }
+  void _onBookCategorySelected(String category) async {
+    setState(() {
+      _selectedCategory = category == _selectedCategory ? null : category;
+      _searchController.clear();
+    });
+    
+    if (_selectedCategory != null) {
+      setState(() => _isSearching = true);
+      try {
+        final books = await _booksService.fetchBooksByCategory(_selectedCategory!, limit: 20);
+        if (mounted) {
+          setState(() {
+            _books = books;
+            _isSearching = false;
+          });
+        }
+      } catch (e) {
+        print('Error loading books: $e');
+        if (mounted) {
+          setState(() {
+            _books = [];
+            _isSearching = false;
+          });
+        }
+      }
+    } else {
+      setState(() => _books = []);
+    }
   }
   
   void _onCategorySelected(String category) async {
@@ -379,190 +443,378 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
               onPressed: _pickImageAndExtractText,
             ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Articles', icon: Icon(Icons.article)),
+            Tab(text: 'Books', icon: Icon(Icons.book)),
+          ],
+        ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search articles...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              ref.read(discoverSearchProvider.notifier).state = [];
-                              setState(() => _showHistory = true);
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Theme.of(context).dividerColor),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Theme.of(context).dividerColor),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                    ),
-                    filled: true,
-                    fillColor: Theme.of(context).cardColor,
+          _buildArticlesTab(searchResults),
+          _buildBooksTab(),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildArticlesTab(List<Article> searchResults) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search articles...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            ref.read(discoverSearchProvider.notifier).state = [];
+                            setState(() => _showHistory = true);
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).dividerColor),
                   ),
-                  onSubmitted: (value) => _onSearch(value),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
                 ),
-                if (_showHistory && _searchHistory.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Theme.of(context).dividerColor),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Recent Searches',
+                onSubmitted: (value) => _onSearch(value),
+              ),
+              if (_showHistory && _searchHistory.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Recent Searches',
+                            style: AppTextStyles.uiCaption.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              await _historyService.clearDiscoverHistory();
+                              await _loadSearchHistory();
+                            },
+                            child: Text(
+                              'Clear All',
                               style: AppTextStyles.uiCaption.copyWith(
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
                               ),
                             ),
-                            TextButton(
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ...List.generate(
+                        _searchHistory.length > 5 ? 5 : _searchHistory.length,
+                        (index) {
+                          final query = _searchHistory[index];
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.history, size: 20),
+                            title: Text(
+                              query,
+                              style: AppTextStyles.uiBody,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.close, size: 18),
                               onPressed: () async {
-                                await _historyService.clearDiscoverHistory();
+                                await _historyService.removeDiscoverHistory(query);
                                 await _loadSearchHistory();
                               },
-                              child: Text(
-                                'Clear All',
-                                style: AppTextStyles.uiCaption.copyWith(
-                                  color: AppColors.primary,
-                                ),
-                              ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        ...List.generate(
-                          _searchHistory.length > 5 ? 5 : _searchHistory.length,
-                          (index) {
-                            final query = _searchHistory[index];
-                            return ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.history, size: 20),
-                              title: Text(
-                                query,
-                                style: AppTextStyles.uiBody,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: () async {
-                                  await _historyService.removeDiscoverHistory(query);
-                                  await _loadSearchHistory();
-                                },
-                              ),
-                              onTap: () {
-                                _searchController.text = query;
-                                _onSearch(query);
-                              },
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          
-          SizedBox(
-            height: 50,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _categories.length,
-              itemBuilder: (context, index) {
-                final category = _categories[index];
-                final isSelected = category == _selectedCategory;
-                
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(category),
-                    selected: isSelected,
-                    onSelected: (_) => _onCategorySelected(category),
-                    backgroundColor: AppColors.surfaceLight,
-                    selectedColor: AppColors.primary,
-                    labelStyle: AppTextStyles.uiBody.copyWith(
-                      color: isSelected ? Colors.white : AppColors.textPrimary,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isSearching ? null : () {
-                  final query = _searchController.text.trim();
-                  if (query.isNotEmpty) {
-                    _onSearch(query);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please enter a search query'),
-                        duration: Duration(seconds: 2),
+                            onTap: () {
+                              _searchController.text = query;
+                              _onSearch(query);
+                            },
+                          );
+                        },
                       ),
-                    );
-                  }
-                },
-                icon: _isSearching 
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Icon(Icons.search),
-                label: Text(_isSearching ? 'Searching...' : 'Search Web'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                    ],
+                  ),
                 ),
+            ],
+          ),
+        ),
+        
+        SizedBox(
+          height: 50,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _categories.length,
+            itemBuilder: (context, index) {
+              final category = _categories[index];
+              final isSelected = category == _selectedCategory;
+              
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  label: Text(category),
+                  selected: isSelected,
+                  onSelected: (_) => _onCategorySelected(category),
+                  backgroundColor: AppColors.surfaceLight,
+                  selectedColor: AppColors.primary,
+                  labelStyle: AppTextStyles.uiBody.copyWith(
+                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isSearching ? null : () {
+                final query = _searchController.text.trim();
+                if (query.isNotEmpty) {
+                  _onSearch(query);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a search query'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              icon: _isSearching 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.search),
+              label: Text(_isSearching ? 'Searching...' : 'Search Web'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
               ),
             ),
           ),
-          
-          const SizedBox(height: 16),
-          
-          Expanded(
-            child: _isSearching
-                ? const Center(child: CircularProgressIndicator())
-                : _buildArticleList(searchResults),
+        ),
+        
+        Expanded(
+          child: _isSearching
+              ? const Center(child: CircularProgressIndicator())
+              : _buildArticleList(searchResults),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildBooksTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search books...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _books = []);
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+              fillColor: Theme.of(context).cardColor,
+            ),
+            onSubmitted: (value) async {
+              if (value.trim().isNotEmpty) {
+                setState(() => _isSearching = true);
+                final books = await _booksService.searchBooks(value.trim());
+                if (mounted) {
+                  setState(() {
+                    _books = books;
+                    _isSearching = false;
+                  });
+                }
+              }
+            },
           ),
-        ],
+        ),
+        
+        SizedBox(
+          height: 50,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _bookCategories.length,
+            itemBuilder: (context, index) {
+              final category = _bookCategories[index];
+              final isSelected = category == _selectedCategory;
+              
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  label: Text(category),
+                  selected: isSelected,
+                  onSelected: (_) => _onBookCategorySelected(category),
+                  backgroundColor: AppColors.surfaceLight,
+                  selectedColor: AppColors.primary,
+                  labelStyle: AppTextStyles.uiBody.copyWith(
+                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        Expanded(
+          child: _isSearching
+              ? const Center(child: CircularProgressIndicator())
+              : _buildBooksList(),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildBooksList() {
+    if (_books.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.book, size: 64, color: AppColors.primary),
+            const SizedBox(height: 16),
+            Text('Explore Books', style: AppTextStyles.uiH2),
+            const SizedBox(height: 8),
+            Text(
+              'Search or select a category',
+              style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.65,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
       ),
+      itemCount: _books.length,
+      itemBuilder: (context, index) {
+        final book = _books[index];
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BookReaderScreen(book: book),
+              ),
+            );
+          },
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: book.coverUrl.isNotEmpty
+                      ? Image.network(
+                          book.coverUrl,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: AppColors.primary.withOpacity(0.1),
+                              child: const Center(
+                                child: Icon(Icons.book, size: 48, color: AppColors.primary),
+                              ),
+                            );
+                          },
+                        )
+                      : Container(
+                          color: AppColors.primary.withOpacity(0.1),
+                          child: const Center(
+                            child: Icon(Icons.book, size: 48, color: AppColors.primary),
+                          ),
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        book.title,
+                        style: AppTextStyles.uiBody.copyWith(fontWeight: FontWeight.w600),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        book.author,
+                        style: AppTextStyles.uiCaption.copyWith(color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
   

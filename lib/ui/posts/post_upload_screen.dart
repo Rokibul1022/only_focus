@@ -143,9 +143,11 @@ class _PostUploadScreenState extends ConsumerState<PostUploadScreen> {
                 hintText: 'Enter post title',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: AppColors.surfaceLight,
+                fillColor: Theme.of(context).cardColor,
               ),
-              style: AppTextStyles.uiBody,
+              style: AppTextStyles.uiBody.copyWith(
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
               maxLength: 100,
             ),
             const SizedBox(height: 16),
@@ -156,9 +158,11 @@ class _PostUploadScreenState extends ConsumerState<PostUploadScreen> {
                 hintText: 'Share your thoughts...',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: AppColors.surfaceLight,
+                fillColor: Theme.of(context).cardColor,
               ),
-              style: AppTextStyles.uiBody,
+              style: AppTextStyles.uiBody.copyWith(
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
               maxLines: 5,
               maxLength: 500,
             ),
@@ -166,7 +170,9 @@ class _PostUploadScreenState extends ConsumerState<PostUploadScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Images (${_selectedImages.length}/10)', style: AppTextStyles.uiH3),
+                Text('Images (${_selectedImages.length}/10)', style: AppTextStyles.uiH3.copyWith(
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                )),
                 OutlinedButton.icon(
                   onPressed: _pickImages,
                   icon: const Icon(Icons.add_photo_alternate),
@@ -183,7 +189,7 @@ class _PostUploadScreenState extends ConsumerState<PostUploadScreen> {
               Container(
                 height: 200,
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.textSecondary.withOpacity(0.3)),
                 ),
@@ -195,7 +201,9 @@ class _PostUploadScreenState extends ConsumerState<PostUploadScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'No images selected',
-                        style: AppTextStyles.uiBody.copyWith(color: AppColors.textSecondary),
+                        style: AppTextStyles.uiBody.copyWith(
+                          color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                        ),
                       ),
                     ],
                   ),
@@ -218,7 +226,7 @@ class _PostUploadScreenState extends ConsumerState<PostUploadScreen> {
                         borderRadius: BorderRadius.circular(8),
                         child: Image.file(
                           _selectedImages[index],
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           width: double.infinity,
                           height: double.infinity,
                         ),
