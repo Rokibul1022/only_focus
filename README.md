@@ -55,6 +55,17 @@ A Flutter-based mobile application designed to help users stay focused while rea
 - Anonymous authentication
 - User data isolation (local data cleared on user switch/logout)
 
+### 🤖 Agentic AI — Niko
+- **Niko**, a LangGraph ReAct agent built on a Groq LLM ladder
+- **RAG over your knowledge base**: saved articles sync automatically into a local Chroma vector store, and Niko answers with cited sources
+- **Self-improving long-term memory**: every chat is distilled into durable facts (preferences, goals, interests) that personalize future answers
+- **Document upload**: index PDF, DOCX, TXT, Markdown, JSON, CSV and code files
+- **Vision**: multimodal image analysis (describe, read text, explain diagrams/charts)
+- **Token-by-token streaming** chat over Server-Sent Events
+- **Model ladder + key rotation**: auto-falls back across models and API keys when the free tier rate-limits
+- **Optional MCP server integration** for external tool access
+- Memory and knowledge base are scoped per Firebase user, viewable/deletable from the app
+
 ## Tech Stack
 
 ### Frontend
@@ -67,17 +78,22 @@ A Flutter-based mobile application designed to help users stay focused while rea
 - **OCR**: google_mlkit_text_recognition
 
 ### Backend
+- **FastAPI**: Python API server (`backend/`)
+- **LangGraph**: ReAct agent orchestration (Niko)
+- **Chroma**: persistent vector store (documents + long-term memory)
+- **LangChain**: tools, MCP adapters, text splitting
 - **Firebase Authentication**: User management
 - **Cloud Firestore**: User profiles, reading history, rewards
 - **Cloud Functions**: Star calculation, AI summaries, badge awards
 
 ### APIs & Services
-- **Groq API**: AI-powered article summaries
+- **Groq API**: AI-powered article summaries + Niko agent LLM (model ladder with key rotation)
 - **NewsAPI**: News articles
 - **arXiv API**: Research papers
 - **Wikipedia API**: Encyclopedia articles
 - **DuckDuckGo**: Web search
 - **RSS Feeds**: 50+ category-specific feeds
+- **all-MiniLM-L6-v2 (ONNX)**: local embeddings, no API key needed
 
 ## Project Structure
 
@@ -109,7 +125,8 @@ lib/
 - Flutter SDK (3.0 or higher)
 - Android Studio / Xcode
 - Firebase account
-- Groq API key (for AI summaries)
+- Python 3.11+ (for the Niko backend)
+- Groq API key (for AI summaries and the Niko agent)
 
 ### Installation
 
@@ -148,7 +165,22 @@ lib/
    firebase deploy --only functions
    ```
 
-6. **Run the app**
+6. **Run the Backend (for Niko agent)**
+   ```bash
+   cd backend
+   python -m venv .venv
+   .venv\Scripts\activate        # Windows
+   pip install -r requirements.txt
+   cp .env.example .env          # add GROQ_KEY_1..3 (and optionally more)
+   uvicorn main:app --host 0.0.0.0 --port 8000
+   ```
+   - Optional MCP servers: copy `mcp_servers.example.json` to `mcp_servers.json` and configure.
+   - Point the app at the backend:
+     ```bash
+     flutter run --dart-define=API_BASE_URL=http://<PC-LAN-IP>:8000
+     ```
+
+7. **Run the app**
    ```bash
    flutter run
    ```
