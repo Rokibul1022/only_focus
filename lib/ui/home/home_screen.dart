@@ -11,12 +11,6 @@ import '../shared/article_card.dart';
 import '../reader/reader_screen.dart';
 import '../shared/app_drawer.dart';
 import '../shared/chatbot_widget.dart';
-import '../posts/post_upload_screen.dart';
-import '../friends/friends_screen.dart';
-import '../../providers/friends_provider.dart';
-import '../../providers/messages_provider.dart';
-import '../../providers/posts_provider.dart';
-import '../posts/post_detail_screen.dart';
 import '../feedback/feedback_form_dialog.dart';
 import '../feedback/feedback_list_screen.dart';
 

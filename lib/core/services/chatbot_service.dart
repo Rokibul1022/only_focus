@@ -34,7 +34,7 @@ class ChatbotService {
         'https://api.groq.com/openai/v1/chat/completions',
         options: Options(
           headers: {
-            'Authorization': 'Bearer ${ApiEndpoints.groqApiKey}',
+            'Authorization': 'Bearer ${ApiEndpoints.groqApiKeys.isNotEmpty ? ApiEndpoints.groqApiKeys.first : ''}',
             'Content-Type': 'application/json',
           },
         ),
