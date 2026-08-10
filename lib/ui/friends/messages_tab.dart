@@ -196,9 +196,15 @@ class MessagesTab extends ConsumerWidget {
                               radius: 28,
                               backgroundColor: AppColors.primary.withOpacity(0.1),
                               backgroundImage: friendPhotoUrl != null && friendPhotoUrl.isNotEmpty
-                                  ? FileImage(File(friendPhotoUrl))
+                                  ? (friendPhotoUrl.startsWith('http')
+                                      ? NetworkImage(friendPhotoUrl)
+                                      : (File(friendPhotoUrl).existsSync()
+                                          ? FileImage(File(friendPhotoUrl))
+                                          : null)) as ImageProvider?
                                   : null,
-                              child: friendPhotoUrl == null || friendPhotoUrl.isEmpty
+                              child: friendPhotoUrl == null || 
+                                     friendPhotoUrl.isEmpty ||
+                                     (!friendPhotoUrl.startsWith('http') && !File(friendPhotoUrl).existsSync())
                                   ? Text(
                                       friendName[0].toUpperCase(),
                                       style: AppTextStyles.uiH3.copyWith(color: AppColors.primary),

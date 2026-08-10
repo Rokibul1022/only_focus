@@ -93,9 +93,9 @@ firebase-debug.log
 .env.local
 .env.*.local
 
-# API Keys and Secrets
-**/lib/core/config/api_keys.dart
-lib/core/constants/api_keys.dart
+# API Keys and Secrets (loaded from .env)
+# .env.example is committed; .env holds real keys and must never be committed.
+.env.example.local
 
 # Generated files
 *.g.dart

@@ -18,7 +18,7 @@ class RecommendationsService {
         '${ApiEndpoints.groqApiBase}/chat/completions',
         options: Options(
           headers: {
-            'Authorization': 'Bearer ${ApiEndpoints.groqApiKey}',
+            'Authorization': 'Bearer ${ApiEndpoints.groqApiKeys.first}',
             'Content-Type': 'application/json',
           },
         ),
@@ -90,7 +90,7 @@ class RecommendationsService {
         '${ApiEndpoints.groqApiBase}/chat/completions',
         options: Options(
           headers: {
-            'Authorization': 'Bearer ${ApiEndpoints.groqApiKey}',
+            'Authorization': 'Bearer ${ApiEndpoints.groqApiKeys.first}',
             'Content-Type': 'application/json',
           },
         ),

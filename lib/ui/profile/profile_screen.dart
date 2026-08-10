@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../core/utils/star_calculator.dart';
+import '../../core/utils/image_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/posts_provider.dart';
 import '../../data/models/user_post.dart';
@@ -45,6 +46,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // Update Firestore with local path
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'photoUrl': savedImage.path,
+        'hasCustomPhoto': true,
       });
       
       if (mounted) {
@@ -133,10 +135,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               child: CircleAvatar(
                                 radius: 60,
                                 backgroundColor: Theme.of(context).cardColor,
-                                backgroundImage: profile.photoUrl != null && profile.photoUrl!.isNotEmpty
-                                    ? FileImage(File(profile.photoUrl!))
-                                    : null,
-                                child: profile.photoUrl == null || profile.photoUrl!.isEmpty
+                                backgroundImage: ImageHelper.getImageProvider(profile.photoUrl),
+                                child: ImageHelper.getImageProvider(profile.photoUrl) == null
                                     ? Text(
                                         profile.displayName.isNotEmpty
                                             ? profile.displayName[0].toUpperCase()
@@ -476,12 +476,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(post.imagePaths.first),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                        ),
+                        child: post.imagePaths.isNotEmpty && File(post.imagePaths.first).existsSync()
+                            ? Image.file(
+                                File(post.imagePaths.first),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    color: Theme.of(context).cardColor,
+                                    child: const Icon(Icons.image_not_supported),
+                                  );
+                                },
+                              )
+                            : Container(
+                                color: Theme.of(context).cardColor,
+                                child: const Icon(Icons.image_not_supported),
+                              ),
                       ),
                       if (post.status == PostStatus.pending)
                         Positioned.fill(

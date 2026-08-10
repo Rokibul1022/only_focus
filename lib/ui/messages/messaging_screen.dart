@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/auth_provider.dart';
@@ -175,9 +176,14 @@ class _MessagingScreenState extends ConsumerState<MessagingScreen> {
               radius: 18,
               backgroundColor: AppColors.primary.withOpacity(0.1),
               backgroundImage: widget.friendPhotoUrl != null
-                  ? NetworkImage(widget.friendPhotoUrl!)
+                  ? (widget.friendPhotoUrl!.startsWith('http')
+                      ? NetworkImage(widget.friendPhotoUrl!)
+                      : (File(widget.friendPhotoUrl!).existsSync()
+                          ? FileImage(File(widget.friendPhotoUrl!))
+                          : null)) as ImageProvider?
                   : null,
-              child: widget.friendPhotoUrl == null
+              child: widget.friendPhotoUrl == null ||
+                     (!widget.friendPhotoUrl!.startsWith('http') && !File(widget.friendPhotoUrl!).existsSync())
                   ? Text(
                       widget.friendName[0].toUpperCase(),
                       style: AppTextStyles.uiCaption.copyWith(color: AppColors.primary),

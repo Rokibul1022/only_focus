@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/friends_provider.dart';
@@ -61,10 +62,15 @@ class FriendRequestsTab extends ConsumerWidget {
                               CircleAvatar(
                                 radius: 24,
                                 backgroundColor: AppColors.primary.withOpacity(0.1),
-                                backgroundImage: sender.photoUrl != null 
-                                    ? NetworkImage(sender.photoUrl!) 
+                                backgroundImage: sender.photoUrl != null
+                                    ? (sender.photoUrl!.startsWith('http')
+                                        ? NetworkImage(sender.photoUrl!)
+                                        : (File(sender.photoUrl!).existsSync()
+                                            ? FileImage(File(sender.photoUrl!))
+                                            : null)) as ImageProvider?
                                     : null,
-                                child: sender.photoUrl == null
+                                child: sender.photoUrl == null ||
+                                       (!sender.photoUrl!.startsWith('http') && !File(sender.photoUrl!).existsSync())
                                     ? Text(
                                         sender.displayName[0].toUpperCase(),
                                         style: AppTextStyles.uiH3.copyWith(color: AppColors.primary),
@@ -165,10 +171,15 @@ class FriendRequestsTab extends ConsumerWidget {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: AppColors.primary.withOpacity(0.1),
-                            backgroundImage: receiver.photoUrl != null 
-                                ? NetworkImage(receiver.photoUrl!) 
+                            backgroundImage: receiver.photoUrl != null
+                                ? (receiver.photoUrl!.startsWith('http')
+                                    ? NetworkImage(receiver.photoUrl!)
+                                    : (File(receiver.photoUrl!).existsSync()
+                                        ? FileImage(File(receiver.photoUrl!))
+                                        : null)) as ImageProvider?
                                 : null,
-                            child: receiver.photoUrl == null
+                            child: receiver.photoUrl == null ||
+                                   (!receiver.photoUrl!.startsWith('http') && !File(receiver.photoUrl!).existsSync())
                                 ? Text(
                                     receiver.displayName[0].toUpperCase(),
                                     style: AppTextStyles.uiBody.copyWith(color: AppColors.primary),

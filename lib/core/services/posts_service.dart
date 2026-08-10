@@ -35,19 +35,24 @@ class PostsService {
     required String description,
     required List<File> images,
   }) async {
-    // Save images to local storage
+    // Save images locally
     final imagePaths = await _saveImagesToLocal(images, userId);
 
-    // Create post document
+    // Create post document with metadata only
     final docRef = await _firestore.collection('posts').add({
       'userId': userId,
       'title': title,
       'description': description,
-      'imagePaths': imagePaths,
+      'imageCount': images.length,
       'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
       'likesCount': 0,
       'commentsCount': 0,
+    });
+
+    // Save local paths mapping
+    await _firestore.collection('posts').doc(docRef.id).collection('localData').doc(userId).set({
+      'imagePaths': imagePaths,
     });
 
     // Trigger auto-review
@@ -102,9 +107,13 @@ class PostsService {
         .where('status', isEqualTo: 'approved')
         .limit(limit)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserPost.fromFirestore(doc))
-            .toList());
+        .asyncMap((snapshot) async {
+      final posts = <UserPost>[];
+      for (var doc in snapshot.docs) {
+        posts.add(await _buildUserPost(doc));
+      }
+      return posts;
+    });
   }
 
   // Get user's posts
@@ -113,9 +122,60 @@ class PostsService {
         .collection('posts')
         .where('userId', isEqualTo: userId)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserPost.fromFirestore(doc))
-            .toList());
+        .asyncMap((snapshot) async {
+      final posts = <UserPost>[];
+      for (var doc in snapshot.docs) {
+        posts.add(await _buildUserPost(doc));
+      }
+      return posts;
+    });
+  }
+
+  Future<UserPost> _buildUserPost(DocumentSnapshot doc) async {
+    final data = doc.data() as Map<String, dynamic>;
+    
+    // Try to get local paths for current user
+    List<String> imagePaths = [];
+    try {
+      final localDoc = await _firestore
+          .collection('posts')
+          .doc(doc.id)
+          .collection('localData')
+          .doc(data['userId'])
+          .get();
+      
+      if (localDoc.exists) {
+        imagePaths = List<String>.from(localDoc.data()?['imagePaths'] ?? []);
+      }
+    } catch (e) {
+      // Ignore
+    }
+    
+    DateTime createdAt;
+    if (data['createdAt'] != null) {
+      createdAt = (data['createdAt'] as Timestamp).toDate();
+    } else {
+      createdAt = DateTime.now();
+    }
+    
+    return UserPost(
+      id: doc.id,
+      userId: data['userId'] ?? '',
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      imagePaths: imagePaths,
+      status: PostStatus.values.firstWhere(
+        (e) => e.name == data['status'],
+        orElse: () => PostStatus.pending,
+      ),
+      createdAt: createdAt,
+      reviewedAt: data['reviewedAt'] != null 
+          ? (data['reviewedAt'] as Timestamp).toDate() 
+          : null,
+      likesCount: data['likesCount'] ?? 0,
+      commentsCount: data['commentsCount'] ?? 0,
+      rejectionReason: data['rejectionReason'],
+    );
   }
 
   // Like a post
@@ -164,18 +224,34 @@ class PostsService {
     final data = postDoc.data();
     
     if (data != null) {
-      final imagePaths = List<String>.from(data['imagePaths'] ?? []);
+      final userId = data['userId'] as String;
       
-      // Delete images from local storage
-      for (var path in imagePaths) {
-        try {
-          final file = File(path);
-          if (await file.exists()) {
-            await file.delete();
+      // Get local paths
+      try {
+        final localDoc = await _firestore
+            .collection('posts')
+            .doc(postId)
+            .collection('localData')
+            .doc(userId)
+            .get();
+        
+        if (localDoc.exists) {
+          final imagePaths = List<String>.from(localDoc.data()?['imagePaths'] ?? []);
+          
+          // Delete local images
+          for (var path in imagePaths) {
+            try {
+              final file = File(path);
+              if (await file.exists()) {
+                await file.delete();
+              }
+            } catch (e) {
+              // Ignore
+            }
           }
-        } catch (e) {
-          // Ignore errors
         }
+      } catch (e) {
+        // Ignore
       }
     }
 

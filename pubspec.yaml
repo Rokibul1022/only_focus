@@ -17,6 +17,7 @@ dependencies:
   cloud_functions: ^5.0.4
   # firebase_messaging: ^15.0.4  # Temporarily disabled - causing iOS build issues
   firebase_analytics: ^11.2.1
+  firebase_storage: ^12.1.0
   
   # State management & navigation
   flutter_riverpod: ^2.5.1
@@ -62,6 +63,7 @@ dependencies:
   xml: ^6.5.0
   flutter_sound: ^9.2.13
   permission_handler: ^11.3.0
+  flutter_dotenv: ^6.0.1
 
 dev_dependencies:
   flutter_test:
@@ -77,3 +79,4 @@ flutter:
     - assets/images/
     - assets/audio/
     - assets/js/
+    - .env

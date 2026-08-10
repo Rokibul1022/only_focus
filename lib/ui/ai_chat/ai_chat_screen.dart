@@ -3,17 +3,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:dio/dio.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
-import '../../core/constants/api_endpoints.dart';
 import '../../core/services/ocr_service.dart';
 import '../../core/services/chat_history_service.dart';
 import '../../core/services/tts_service.dart';
+import '../../core/services/backend_api_service.dart';
+import '../../core/services/niko_sync_service.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AIChatScreen extends ConsumerStatefulWidget {
   const AIChatScreen({super.key});
@@ -31,7 +33,9 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   final ChatHistoryService _historyService = ChatHistoryService();
   final TtsService _ttsService = TtsService();
   final FlutterSoundRecorder _audioRecorder = FlutterSoundRecorder();
-  final Dio _dio = Dio();
+  final BackendApiService _backend = BackendApiService();
+  final NikoSyncService _nikoSync = NikoSyncService();
+  final String _userId = FirebaseAuth.instance.currentUser?.uid ?? 'default';
   bool _isLoading = false;
   bool _isRecording = false;
   File? _selectedFile;
@@ -40,17 +44,153 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   String _currentChatTitle = 'New Chat';
   String? _speakingMessageId;
   bool _isPaused = false;
+  bool _isStreaming = false;
   String? _recordingPath;
+  List<Map<String, dynamic>> _documents = [];
+  List<Map<String, dynamic>> _memories = [];
+  bool _docsLoading = false;
 
   @override
   void initState() {
     super.initState();
     _initServices();
+    _syncNikoKnowledge();
+    _loadNikoData();
     _messages.add(ChatMessage(
-      text: 'Hello! I\'m your AI study assistant. Ask me anything about any topic - science, math, programming, history, or upload files/images for analysis!',
+      text: 'Hi, I\'m Niko - your AI learning companion. I remember our conversations, and I can search your saved articles and files. Ask me anything, or upload a document for me to learn from!',
       isUser: false,
       timestamp: DateTime.now(),
     ));
+  }
+
+  Future<void> _loadNikoData() async {
+    await _loadDocuments();
+    await _loadMemories();
+  }
+
+  Future<void> _loadDocuments() async {
+    if (_docsLoading) return;
+    setState(() => _docsLoading = true);
+    try {
+      final docs = await _backend.nikoDocuments(userId: _userId);
+      if (mounted) setState(() => _documents = docs);
+    } catch (e) {
+      print('Niko docs load failed: $e');
+    } finally {
+      if (mounted) setState(() => _docsLoading = false);
+    }
+  }
+
+  Future<void> _loadMemories() async {
+    try {
+      final mems = await _backend.nikoMemories(userId: _userId);
+      if (mounted) setState(() => _memories = mems);
+    } catch (e) {
+      print('Niko memory load failed: $e');
+    }
+  }
+
+  Future<void> _deleteDocument(Map<String, dynamic> doc) async {
+    try {
+      await _backend.nikoDeleteDocument(doc['doc_id'] as String);
+      await _loadDocuments();
+    } catch (e) {
+      print('Niko doc delete failed: $e');
+    }
+  }
+
+  Future<void> _deleteMemory(String memoryId) async {
+    try {
+      await _backend.nikoDeleteMemory(memoryId);
+      await _loadMemories();
+    } catch (e) {
+      print('Niko memory delete failed: $e');
+    }
+  }
+
+  void _askAboutDocument(Map<String, dynamic> doc) {
+    _messageController.text = 'Summarize the document "${doc['title']}" for me.';
+    _sendMessage();
+  }
+
+  void _showMemorySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('Niko\'s Long-Term Memory', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _loadMemories,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _memories.isEmpty
+                    ? const Center(child: Text('No memories yet. Chat with Niko and it will start remembering you.'))
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: _memories.length,
+                        itemBuilder: (context, index) {
+                          final mem = _memories[index];
+                          return ListTile(
+                            leading: Icon(
+                              mem['kind'] == 'preference'
+                                  ? Icons.favorite_outline
+                                  : mem['kind'] == 'goal'
+                                      ? Icons.flag_outlined
+                                      : Icons.lightbulb_outline,
+                              color: AppColors.primary,
+                            ),
+                            title: Text(mem['text'] as String? ?? ''),
+                            subtitle: Text('${mem['kind']}  \u00b7  importance ${mem['importance']}'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 20),
+                              onPressed: () => _deleteMemory(mem['id'] as String),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _syncNikoKnowledge() async {
+    try {
+      final count = await _nikoSync.syncBookmarks();
+      print('Niko synced $count saved article(s) for user $_userId');
+    } catch (e) {
+      print('Niko knowledge sync failed: $e');
+    }
   }
 
   Future<void> _initServices() async {
@@ -70,31 +210,45 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty && _selectedFile == null) return;
+    if (_isStreaming) return;
 
     String messageText = text;
+    bool uploading = false;
+    bool visionImage = false;
+    String? pickedPath;
+    String? pickedName;
+    String? visionOcrFallback;
+    String? imageData;
     
     // If file is selected, extract text from it
     if (_selectedFile != null) {
-      if (_selectedFileName!.toLowerCase().endsWith('.jpg') ||
-          _selectedFileName!.toLowerCase().endsWith('.jpeg') ||
-          _selectedFileName!.toLowerCase().endsWith('.png')) {
+      pickedPath = _selectedFile!.path;
+      pickedName = _selectedFileName;
+      final name = (_selectedFileName ?? '').toLowerCase();
+      if (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png')) {
+        // Image: let Niko see it via the vision endpoint. Pre-extract OCR text
+        // as a fallback in case the vision model is unavailable.
+        visionImage = true;
+        messageText = text;
         try {
-          final extractedText = await _ocrService.extractTextFromImage(_selectedFile!.path);
-          if (extractedText.isNotEmpty) {
-            messageText = text.isEmpty 
-                ? 'Analyze this image: $extractedText' 
-                : '$text\n\nImage content: $extractedText';
-          } else {
-            messageText = text.isEmpty ? 'Describe what you see in this image' : text;
+          final bytes = await _selectedFile!.readAsBytes();
+          if (bytes.isNotEmpty) {
+            imageData = base64Encode(bytes);
           }
         } catch (e) {
-          print('OCR error: $e');
-          messageText = text.isEmpty ? 'Describe this image' : text;
+          print('Image bytes error: $e');
+        }
+        try {
+          visionOcrFallback = await _ocrService.extractTextFromImage(_selectedFile!.path);
+        } catch (e) {
+          print('OCR pre-extract error: $e');
         }
       } else {
-        messageText = text.isEmpty 
-            ? 'Help me understand this file: $_selectedFileName' 
-            : '$text\n\nRegarding file: $_selectedFileName';
+        // Document (PDF/TXT/DOCX/...): upload and index into Niko's knowledge base
+        uploading = true;
+        messageText = text.isEmpty
+            ? 'I just uploaded a document ($pickedName). What does it cover?'
+            : text;
       }
     }
 
@@ -102,7 +256,8 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
       text: messageText,
       isUser: true,
       timestamp: DateTime.now(),
-      fileName: _selectedFileName,
+      fileName: pickedName,
+      imageData: imageData,
     );
 
     setState(() {
@@ -115,72 +270,192 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
 
     _scrollToBottom();
 
-    try {
-      print('Sending message to Groq API...');
-      
-      final response = await _dio.post(
-        '${ApiEndpoints.groqApiBase}/chat/completions',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer ${ApiEndpoints.groqApiKey}',
-            'Content-Type': 'application/json',
-          },
-          validateStatus: (status) => status! < 500,
-        ),
-        data: {
-          'model': 'llama-3.3-70b-versatile',
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'You are a helpful AI study assistant for students. Provide clear, accurate, and educational responses. Break down complex topics into understandable explanations. Use examples when helpful.',
-            },
-            ..._messages.map((msg) => {
-              'role': msg.isUser ? 'user' : 'assistant',
-              'content': msg.text,
-            }).toList(),
-          ],
-          'temperature': 0.7,
-          'max_tokens': 2000,
-        },
-      );
-
-      print('Response status: ${response.statusCode}');
-      
-      if (response.statusCode != 200) {
-        throw Exception('API returned ${response.statusCode}: ${response.data}');
+    // Upload + index the document before chatting about it
+    if (uploading && pickedPath != null && pickedName != null) {
+      try {
+        await _backend.nikoUploadFile(
+          filePath: pickedPath,
+          fileName: pickedName,
+          title: pickedName,
+          userId: _userId,
+        );
+        await _loadDocuments();
+      } catch (e) {
+        print('Niko upload error: $e');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not index the file: $e')),
+        );
       }
+    }
 
-      final aiResponse = response.data['choices'][0]['message']['content'] as String;
+    // Image: send it to Niko's vision endpoint (OCR fallback if it fails).
+    if (visionImage && pickedPath != null && pickedName != null) {
+      await _analyzeImage(pickedPath, pickedName, text, visionOcrFallback);
+      _saveCurrentChat();
+      _scrollToBottom();
+      return;
+    }
 
-      setState(() {
-        _messages.add(ChatMessage(
-          text: aiResponse,
-          isUser: false,
-          timestamp: DateTime.now(),
-        ));
-        _isLoading = false;
-      });
-
-      // Auto-generate title from first user message
+    try {
+      await _streamResponse();
       if (_messages.where((m) => m.isUser).length == 1) {
         _currentChatTitle = text.length > 30 ? '${text.substring(0, 30)}...' : text;
       }
-
-      // Save chat history
       _saveCurrentChat();
-
       _scrollToBottom();
     } catch (e) {
-      print('Error sending message: $e');
+      // Fallback to the non-streaming endpoint, then give up.
+      print('Niko stream failed, falling back: $e');
+      await _sendNonStreaming();
+    }
+  }
+
+  Future<void> _analyzeImage(
+    String path,
+    String name,
+    String prompt,
+    String? ocrFallback,
+  ) async {
+    try {
+      final result = await _backend.nikoVisionAnalysis(
+        filePath: path,
+        fileName: name,
+        message: prompt,
+        sessionId: _currentChatId,
+        userId: _userId,
+      );
+      if (!mounted) return;
       setState(() {
         _messages.add(ChatMessage(
-          text: 'Sorry, I encountered an error: ${e.toString()}. Please check your internet connection and try again.',
+          text: result['reply'] as String,
           isUser: false,
           timestamp: DateTime.now(),
         ));
         _isLoading = false;
       });
+      return;
+    } catch (e) {
+      print('Niko vision failed, OCR fallback: $e');
     }
+
+    // Fallback: inject OCR text and use the normal chat pipeline.
+    final ocr = ocrFallback?.trim() ?? '';
+    final fallbackText = ocr.isNotEmpty
+        ? (prompt.isEmpty ? 'Analyze this image: $ocr' : '$prompt\n\nImage content: $ocr')
+        : (prompt.isEmpty ? 'Describe what you see in this image' : prompt);
+
+    if (mounted && _messages.isNotEmpty && _messages.last.isUser) {
+      setState(() => _messages.last.text = fallbackText);
+    }
+    try {
+      await _streamResponse();
+    } catch (e) {
+      print('Niko OCR fallback stream failed: $e');
+      await _sendNonStreaming();
+    }
+  }
+
+  Future<void> _streamResponse() async {
+    setState(() {
+      _isStreaming = true;
+      _isLoading = false;
+    });
+
+    String buffer = '';
+    ChatMessage? streamingMsg;
+    List<String> citedSources = [];
+    try {
+      final payload = _messages.map((msg) => {
+        'role': msg.isUser ? 'user' : 'assistant',
+        'content': msg.text,
+      }).toList();
+
+      await for (final event in _backend.nikoChatStream(
+        messages: payload,
+        sessionId: _currentChatId,
+        userId: _userId,
+      )) {
+        if (event.type == 'token') {
+          buffer += event.content;
+          if (buffer.isEmpty) continue;
+          setState(() {
+            if (streamingMsg == null || !_messages.contains(streamingMsg)) {
+              streamingMsg = ChatMessage(
+                text: buffer,
+                isUser: false,
+                timestamp: DateTime.now(),
+              );
+              _messages.add(streamingMsg!);
+            } else {
+              streamingMsg!.text = buffer;
+            }
+          });
+          _scrollToBottom();
+        } else if (event.type == 'done') {
+          citedSources = event.sources.map((s) => s['title'] ?? '').where((t) => t.isNotEmpty).toList();
+        } else if (event.type == 'error') {
+          throw Exception(event.content.isNotEmpty ? event.content : 'Stream error');
+        }
+      }
+
+      if (buffer.isEmpty) {
+        throw Exception('No response from Niko');
+      }
+      if (streamingMsg != null && citedSources.isNotEmpty) {
+        setState(() => streamingMsg!.sources = citedSources);
+      }
+    } finally {
+      if (mounted) setState(() => _isStreaming = false);
+    }
+  }
+
+  Future<void> _sendNonStreaming() async {
+    for (int retry = 0; retry < 3; retry++) {
+      try {
+        final payload = _messages.map((msg) => {
+          'role': msg.isUser ? 'user' : 'assistant',
+          'content': msg.text,
+        }).toList();
+
+        final result = await _backend.nikoChat(
+          messages: payload,
+          sessionId: _currentChatId,
+          userId: _userId,
+        );
+
+        setState(() {
+          _messages.add(ChatMessage(
+            text: result.reply,
+            isUser: false,
+            timestamp: DateTime.now(),
+            sources: result.sources.map((s) => s['title'] ?? '').where((t) => t.isNotEmpty).toList(),
+          ));
+          _isLoading = false;
+        });
+
+        _saveCurrentChat();
+        _scrollToBottom();
+        return;
+      } catch (e) {
+        print('Niko chat error: $e');
+      }
+
+      if (retry < 2) {
+        await Future.delayed(Duration(seconds: (retry + 1) * 2));
+      }
+    }
+
+    setState(() {
+      if (_messages.isEmpty || !_messages.last.isUser) {
+        _messages.add(ChatMessage(
+          text: 'Niko is not reachable right now. Make sure the backend is running (${BackendApiService.baseUrl}) and try again.',
+          isUser: false,
+          timestamp: DateTime.now(),
+        ));
+      }
+      _isLoading = false;
+    });
   }
 
   void _scrollToBottom() {
@@ -250,6 +525,8 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         'isUser': m.isUser,
         'timestamp': m.timestamp.toIso8601String(),
         'fileName': m.fileName,
+        'imageData': m.imageData,
+        'sources': m.sources,
       }).toList(),
     );
     _historyService.saveChat(session);
@@ -265,6 +542,8 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         isUser: m['isUser'] as bool,
         timestamp: DateTime.parse(m['timestamp'] as String),
         fileName: m['fileName'] as String?,
+        imageData: m['imageData'] as String?,
+        sources: (m['sources'] as List?)?.map((s) => s.toString()).toList() ?? const [],
       )));
     });
     Navigator.pop(context);
@@ -447,8 +726,13 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI Study Assistant'),
+        title: const Text('Niko'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.psychology_outlined),
+            tooltip: 'Niko\'s memory',
+            onPressed: _showMemorySheet,
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: 'Chat history',
@@ -463,6 +747,8 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
       ),
       body: Column(
         children: [
+          if (_documents.isNotEmpty)
+            _buildDocsSlider(),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -564,7 +850,7 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
                 const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.send),
-                  onPressed: _isLoading ? null : _sendMessage,
+                  onPressed: (_isLoading || _isStreaming) ? null : _sendMessage,
                   color: AppColors.primary,
                 ),
               ],
@@ -573,6 +859,95 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildDocsSlider() {
+    return Container(
+      height: 74,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: _documents.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(
+                child: Text(
+                  'My docs',
+                  style: AppTextStyles.uiCaption.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            );
+          }
+          final doc = _documents[index - 1];
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _askAboutDocument(doc),
+              onLongPress: () => _confirmDeleteDocument(doc),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.description_outlined, size: 18, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 160),
+                      child: Text(
+                        doc['title'] as String? ?? 'Document',
+                        style: AppTextStyles.uiCaption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${doc['chunks']}',
+                      style: AppTextStyles.uiCaption.copyWith(color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteDocument(Map<String, dynamic> doc) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete document?'),
+        content: Text('Remove "${doc['title']}" from Niko\'s knowledge base?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _deleteDocument(doc);
+    }
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -604,6 +979,19 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (message.imageData != null && message.imageData!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    base64Decode(message.imageData!),
+                    width: 180,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
             if (message.fileName != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -635,6 +1023,37 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
                 color: message.isUser ? Colors.white : null,
               ),
             ),
+            if (!message.isUser && message.sources.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: message.sources.take(4).map((source) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.menu_book, size: 12, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Text(
+                            source,
+                            style: AppTextStyles.uiCaption.copyWith(color: AppColors.primary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
             if (!message.isUser)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -742,15 +1161,19 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
 }
 
 class ChatMessage {
-  final String text;
+  String text;
   final bool isUser;
   final DateTime timestamp;
   final String? fileName;
+  String? imageData;
+  List<String> sources;
 
   ChatMessage({
     required this.text,
     required this.isUser,
     required this.timestamp,
     this.fileName,
+    this.imageData,
+    this.sources = const [],
   });
 }

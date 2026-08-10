@@ -167,9 +167,20 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> with SingleTicker
                 if (post.imagePaths.isNotEmpty)
                   AspectRatio(
                     aspectRatio: 16 / 9,
-                    child: Image.file(
-                      File(post.imagePaths.first),
-                      fit: BoxFit.cover,
+                    child: FutureBuilder<bool>(
+                      future: File(post.imagePaths.first).exists(),
+                      builder: (context, fileSnapshot) {
+                        if (fileSnapshot.data == true) {
+                          return Image.file(
+                            File(post.imagePaths.first),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return _buildImagePlaceholder();
+                            },
+                          );
+                        }
+                        return _buildImagePlaceholder();
+                      },
                     ),
                   ),
                 Padding(
@@ -226,6 +237,31 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> with SingleTicker
           ),
         );
       },
+    );
+  }
+
+  Widget _buildImagePlaceholder() {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.image_not_supported_outlined,
+              size: 48,
+              color: AppColors.textSecondary.withOpacity(0.5),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Image not available',
+              style: AppTextStyles.uiCaption.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

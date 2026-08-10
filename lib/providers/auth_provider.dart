@@ -173,19 +173,31 @@ class AuthService {
     
     // Check if this is a new user
     if (userCredential.additionalUserInfo?.isNewUser ?? false) {
-      // Create user profile
+      // Create user profile with Google photo
       if (userCredential.user != null) {
         final profile = UserProfile.initial(
           uid: userCredential.user!.uid,
           displayName: userCredential.user!.displayName ?? 'User',
           email: userCredential.user!.email ?? '',
+          photoUrl: userCredential.user!.photoURL,
         );
         await _userRepo.createUserProfile(profile);
       }
     } else {
-      // Update last active
+      // Update last active and preserve Google photo if no custom photo
       if (userCredential.user != null) {
         await _userRepo.updateLastActive(userCredential.user!.uid);
+        
+        // Check if user has custom photo, if not update with Google photo
+        final existingProfile = await _userRepo.getUserProfile(userCredential.user!.uid);
+        if (existingProfile != null && 
+            (existingProfile.photoUrl == null || existingProfile.photoUrl!.isEmpty) &&
+            userCredential.user!.photoURL != null) {
+          await _userRepo.updateUserProfile(
+            userCredential.user!.uid,
+            {'photoUrl': userCredential.user!.photoURL},
+          );
+        }
       }
     }
     

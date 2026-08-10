@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- Allow cleartext for dev APIs (arxiv, local Niko backend). -->
+    <base-config cleartextTrafficPermitted="true" />
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">arxiv.org</domain>
         <domain includeSubdomains="true">export.arxiv.org</domain>

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../providers/friends_provider.dart';
@@ -51,8 +52,15 @@ class SuggestedFriendsTab extends ConsumerWidget {
                         CircleAvatar(
                           radius: 32,
                           backgroundColor: AppColors.primary.withOpacity(0.1),
-                          backgroundImage: user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
-                          child: user.photoUrl == null
+                          backgroundImage: user.photoUrl != null
+                              ? (user.photoUrl!.startsWith('http')
+                                  ? NetworkImage(user.photoUrl!)
+                                  : (File(user.photoUrl!).existsSync()
+                                      ? FileImage(File(user.photoUrl!))
+                                      : null)) as ImageProvider?
+                              : null,
+                          child: user.photoUrl == null ||
+                                 (!user.photoUrl!.startsWith('http') && !File(user.photoUrl!).existsSync())
                               ? Text(
                                   user.displayName[0].toUpperCase(),
                                   style: AppTextStyles.uiH2.copyWith(color: AppColors.primary),

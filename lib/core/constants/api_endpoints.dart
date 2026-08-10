@@ -1,10 +1,10 @@
-import 'api_keys.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiEndpoints {
   // News APIs
   static const String hackerNewsBase = 'https://hacker-news.firebaseio.com/v0';
   static const String newsApiBase = 'https://newsapi.org/v2';
-  static const String newsApiKey = ApiKeys.newsApiKey;
+  static String get newsApiKey => dotenv.env['NEWS_API_KEY'] ?? '';
   static const String guardianBase = 'https://content.guardianapis.com';
   
   // RSS Feeds
@@ -23,12 +23,16 @@ class ApiEndpoints {
   
   // AI APIs
   static const String groqApiBase = 'https://api.groq.com/openai/v1';
-  static const String groqApiKey = ApiKeys.groqApiKey;
+  static List<String> get groqApiKeys => (dotenv.env['GROQ_API_KEYS'] ?? '')
+      .split(',')
+      .map((key) => key.trim())
+      .where((key) => key.isNotEmpty)
+      .toList();
   static const String openRouterApiBase = 'https://openrouter.ai/api/v1';
-  static const String openRouterApiKey = ApiKeys.openRouterApiKey;
+  static String get openRouterApiKey => dotenv.env['OPENROUTER_API_KEY'] ?? '';
   
   // ElevenLabs API
   static const String elevenLabsApiBase = 'https://api.elevenlabs.io/v1';
-  static const String elevenLabsApiKey = ApiKeys.elevenLabsApiKey;
+  static String get elevenLabsApiKey => dotenv.env['ELEVENLABS_API_KEY'] ?? '';
   static const String elevenLabsVoiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Default voice
 }

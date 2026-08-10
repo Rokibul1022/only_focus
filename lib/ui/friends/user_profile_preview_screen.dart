@@ -60,8 +60,13 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                       CircleAvatar(
                         radius: 60,
                         backgroundColor: Colors.white,
-                        backgroundImage: user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
-                        child: user.photoUrl == null
+                        backgroundImage: user.photoUrl != null && user.photoUrl!.startsWith('http')
+                            ? NetworkImage(user.photoUrl!)
+                            : (user.photoUrl != null && File(user.photoUrl!).existsSync()
+                                ? FileImage(File(user.photoUrl!))
+                                : null) as ImageProvider?,
+                        child: user.photoUrl == null || 
+                               (!user.photoUrl!.startsWith('http') && !File(user.photoUrl!).existsSync())
                             ? Text(
                                 user.displayName[0].toUpperCase(),
                                 style: AppTextStyles.uiH1.copyWith(color: AppColors.primary),
@@ -210,12 +215,23 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                                   children: [
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: Image.file(
-                                        File(post.imagePaths.first),
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                      ),
+                                      child: post.imagePaths.isNotEmpty && File(post.imagePaths.first).existsSync()
+                                          ? Image.file(
+                                              File(post.imagePaths.first),
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Container(
+                                                  color: Colors.grey[300],
+                                                  child: const Icon(Icons.image_not_supported),
+                                                );
+                                              },
+                                            )
+                                          : Container(
+                                              color: Colors.grey[300],
+                                              child: const Icon(Icons.image_not_supported),
+                                            ),
                                     ),
                                     if (post.status.name == 'pending')
                                       Positioned.fill(

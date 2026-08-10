@@ -127,9 +127,14 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               radius: 24,
                               backgroundColor: AppColors.primary.withOpacity(0.1),
                               backgroundImage: author.photoUrl != null
-                                  ? NetworkImage(author.photoUrl!)
+                                  ? (author.photoUrl!.startsWith('http')
+                                      ? NetworkImage(author.photoUrl!)
+                                      : (File(author.photoUrl!).existsSync()
+                                          ? FileImage(File(author.photoUrl!))
+                                          : null)) as ImageProvider?
                                   : null,
-                              child: author.photoUrl == null
+                              child: author.photoUrl == null ||
+                                     (!author.photoUrl!.startsWith('http') && !File(author.photoUrl!).existsSync())
                                   ? Text(
                                       author.displayName[0].toUpperCase(),
                                       style: AppTextStyles.uiH3.copyWith(color: AppColors.primary),
@@ -160,20 +165,36 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   // Images
                   SizedBox(
                     height: 400,
-                    child: Stack(
-                      children: [
-                        PageView.builder(
-                          itemCount: widget.post.imagePaths.length,
-                          onPageChanged: (index) {
-                            setState(() => _currentImageIndex = index);
-                          },
-                          itemBuilder: (context, index) {
-                            return Image.file(
-                              File(widget.post.imagePaths[index]),
-                              fit: BoxFit.cover,
-                            );
-                          },
-                        ),
+                    child: widget.post.imagePaths.isEmpty
+                        ? _buildNoImagesPlaceholder()
+                        : Stack(
+                            children: [
+                              PageView.builder(
+                                itemCount: widget.post.imagePaths.length,
+                                onPageChanged: (index) {
+                                  setState(() => _currentImageIndex = index);
+                                },
+                                itemBuilder: (context, index) {
+                                  final imagePath = widget.post.imagePaths[index];
+                                  final imageFile = File(imagePath);
+                                  
+                                  return FutureBuilder<bool>(
+                                    future: imageFile.exists(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.data == true) {
+                                        return Image.file(
+                                          imageFile,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return _buildImagePlaceholder();
+                                          },
+                                        );
+                                      }
+                                      return _buildImagePlaceholder();
+                                    },
+                                  );
+                                },
+                              ),
                         if (widget.post.imagePaths.length > 1)
                           Positioned(
                             bottom: 16,
@@ -305,9 +326,14 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       radius: 16,
                                       backgroundColor: AppColors.primary.withOpacity(0.1),
                                       backgroundImage: user.photoUrl != null
-                                          ? NetworkImage(user.photoUrl!)
+                                          ? (user.photoUrl!.startsWith('http')
+                                              ? NetworkImage(user.photoUrl!)
+                                              : (File(user.photoUrl!).existsSync()
+                                                  ? FileImage(File(user.photoUrl!))
+                                                  : null)) as ImageProvider?
                                           : null,
-                                      child: user.photoUrl == null
+                                      child: user.photoUrl == null ||
+                                             (!user.photoUrl!.startsWith('http') && !File(user.photoUrl!).existsSync())
                                           ? Text(
                                               user.displayName[0].toUpperCase(),
                                               style: AppTextStyles.uiCaption.copyWith(
@@ -394,6 +420,56 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildImagePlaceholder() {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.image_not_supported_outlined,
+              size: 64,
+              color: AppColors.textSecondary.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Image not available',
+              style: AppTextStyles.uiBody.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoImagesPlaceholder() {
+    return Container(
+      color: Theme.of(context).cardColor,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.photo_library_outlined,
+              size: 64,
+              color: AppColors.textSecondary.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No images in this post',
+              style: AppTextStyles.uiBody.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

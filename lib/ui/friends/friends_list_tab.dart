@@ -85,9 +85,15 @@ class FriendsListTab extends ConsumerWidget {
                       radius: 28,
                       backgroundColor: AppColors.primary.withOpacity(0.1),
                       backgroundImage: friend.photoUrl != null && friend.photoUrl!.isNotEmpty
-                          ? FileImage(File(friend.photoUrl!))
+                          ? (friend.photoUrl!.startsWith('http')
+                              ? NetworkImage(friend.photoUrl!)
+                              : (File(friend.photoUrl!).existsSync()
+                                  ? FileImage(File(friend.photoUrl!))
+                                  : null)) as ImageProvider?
                           : null,
-                      child: friend.photoUrl == null || friend.photoUrl!.isEmpty
+                      child: friend.photoUrl == null || 
+                             friend.photoUrl!.isEmpty ||
+                             (!friend.photoUrl!.startsWith('http') && !File(friend.photoUrl!).existsSync())
                           ? Text(
                               friend.displayName[0].toUpperCase(),
                               style: AppTextStyles.uiH3.copyWith(color: AppColors.primary),

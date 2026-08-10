@@ -115,6 +115,7 @@ class UserProfile {
     required String uid,
     required String displayName,
     required String email,
+    String? photoUrl,
   }) {
     return UserProfile(
       uid: uid,
@@ -136,6 +137,7 @@ class UserProfile {
       readingPersona: 'The Explorer',
       notificationsEnabled: true,
       preferredCategories: [],
+      photoUrl: photoUrl,
       isOnline: false,
     );
   }
